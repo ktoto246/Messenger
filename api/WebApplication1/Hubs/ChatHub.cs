@@ -38,40 +38,53 @@ namespace WebApplication1.Hubs
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, chatId);
         }
 
-        public async Task Typing(string chatId, int userId)
+        public async Task Typing(string chatIdStr, int userId)
         {
-            // 🛡️ Проверка, что ты — это ты, и ты в этом чате
-            if (userId == CurrentUserId)
-            {
-                await Clients.Group(chatId).SendAsync("UserTyping", chatId, userId);
-            }
-        }
-
-        public async Task SendReaction(string chatId, long messageId)
-        {
-            // 🛡️ Проверка: является ли пользователь участником этого чата
-            if (int.TryParse(chatId, out int id))
+            if (int.TryParse(chatIdStr, out int chatId) && userId == CurrentUserId)
             {
                 var isParticipant = await _context.ChatParticipants
-                    .AnyAsync(cp => cp.ChatID == id && cp.UserID == CurrentUserId);
+                    .AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
 
                 if (isParticipant)
                 {
-                    await Clients.Group(chatId).SendAsync("UpdateReaction", messageId);
+                    await Clients.Group(chatIdStr).SendAsync("UserTyping", chatIdStr, userId);
+                }
+            }
+        }
+
+        public async Task SendReaction(string chatIdStr, long messageId)
+        {
+            if (int.TryParse(chatIdStr, out int chatId))
+            {
+                var isParticipant = await _context.ChatParticipants
+                    .AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+
+                if (isParticipant)
+                {
+                    await Clients.Group(chatIdStr).SendAsync("UpdateReaction", messageId);
                 }
             }
         }
 
         // 🔔 ГАЛОЧКИ ПРОЧТЕНИЯ
-        public async Task MarkAsRead(string chatId, long messageId)
+        public async Task MarkAsRead(string chatIdStr, long messageId)
         {
-            var msg = await _context.Messages.FindAsync(messageId);
-            if (msg != null && msg.ChatID.ToString() == chatId)
+            if (int.TryParse(chatIdStr, out int chatId))
             {
-                msg.IsRead = true;
-                msg.ReadAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
-                await Clients.Group(chatId).SendAsync("MessageRead", messageId);
+                var isParticipant = await _context.ChatParticipants
+                    .AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+
+                if (isParticipant)
+                {
+                    var msg = await _context.Messages.FindAsync(messageId);
+                    if (msg != null && msg.ChatID == chatId)
+                    {
+                        msg.IsRead = true;
+                        msg.ReadAt = DateTime.UtcNow;
+                        await _context.SaveChangesAsync();
+                        await Clients.Group(chatIdStr).SendAsync("MessageRead", messageId);
+                    }
+                }
             }
         }
     }

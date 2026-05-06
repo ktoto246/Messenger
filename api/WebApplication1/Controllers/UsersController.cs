@@ -41,7 +41,7 @@ namespace WebApplication1.Controllers
             }
 
             var users = await usersQuery
-                .Select(u => new { u.UserID, u.DisplayName, u.Username, u.AvatarUrl, u.IsOnline, u.LastActive })
+                .Select(u => new { u.UserID, u.DisplayName, u.Username, u.AvatarUrl, u.IsOnline, u.LastActive, u.Bio })
                 .Take(20)
                 .ToListAsync();
             return Ok(users);
@@ -60,9 +60,9 @@ namespace WebApplication1.Controllers
                 user.UserID, 
                 user.DisplayName, 
                 user.Username, 
-                PhoneNumber = isSelf || (user.PrivacyPhone == false) ? user.PhoneNumber : null, 
+                PhoneNumber = isSelf || (!user.PrivacyPhone) ? user.PhoneNumber : null, 
                 user.Bio, 
-                AvatarUrl = isSelf || (user.PrivacyAvatar == false) ? user.AvatarUrl : null,
+                AvatarUrl = isSelf || (!user.PrivacyAvatar) ? user.AvatarUrl : null,
                 user.IsOnline, 
                 user.LastActive, 
                 user.CreatedAt, 

@@ -34,5 +34,10 @@ namespace WebApplication1.Models
         // Связи (Навигационные свойства)
         public virtual Chat? Chat { get; set; }
         public virtual User? SenderUser { get; set; }
+
+        [ForeignKey("ReplyToMessageId")]
+        public virtual Message? ReplyToMessage { get; set; }
+
+        public virtual ICollection<MessageReaction> Reactions { get; set; } = new List<MessageReaction>();
     }
 }

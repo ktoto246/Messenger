@@ -79,7 +79,7 @@ class AuthService {
         },
       ).timeout(const Duration(seconds: 3));
     } catch (e) {
-      print("Ошибка обновления статуса: $e");
+      // debugPrint("Ошибка обновления статуса: $e");
     }
   }
 }

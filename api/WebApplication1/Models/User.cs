@@ -24,9 +24,9 @@ namespace WebApplication1.Models
 
         public DateTime? DateOfBirth { get; set; }
         public string? MusicUrl { get; set; }
-        public int PrivacyPhone { get; set; } = 0;
-        public int PrivacyAvatar { get; set; } = 0;
-        public int PrivacyMessages { get; set; } = 0;
+        public bool PrivacyPhone { get; set; } = false;
+        public bool PrivacyAvatar { get; set; } = false;
+        public bool PrivacyMessages { get; set; } = false;
 
         public bool IsOnline { get; set; } = false;
         public DateTime? LastActive { get; set; }

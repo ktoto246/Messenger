@@ -115,6 +115,9 @@ namespace WebApplication1.Controllers
                 .OrderByDescending(m => m.MessageID) // По ID надежнее чем по дате
                 .Take(take)
                 .Include(m => m.SenderUser)
+                .Include(m => m.Reactions)
+                .Include(m => m.ReplyToMessage)
+                    .ThenInclude(r => r!.SenderUser)
                 .ToListAsync();
 
             var messages = rawMessages.Select(m => {
@@ -122,13 +125,10 @@ namespace WebApplication1.Controllers
                 string? replyText = null;
                 string? replySender = null;
                 
-                if (m.ReplyToMessageId != null) {
-                    var rMsg = _context.Messages.Include(x => x.SenderUser).FirstOrDefault(x => x.MessageID == m.ReplyToMessageId);
-                    if (rMsg != null) {
-                        replySender = rMsg.SenderUser?.DisplayName;
-                        replyText = !string.IsNullOrEmpty(rMsg.ContentText) ? rMsg.ContentText : 
-                                    (rMsg.MessageType == "Image" ? "📷 Фотография" : "📎 Медиафайл");
-                    }
+                if (m.ReplyToMessage != null) {
+                    replySender = m.ReplyToMessage.SenderUser?.DisplayName;
+                    replyText = !string.IsNullOrEmpty(m.ReplyToMessage.ContentText) ? m.ReplyToMessage.ContentText : 
+                                (m.ReplyToMessage.MessageType == "Image" ? "📷 Фотография" : "📎 Медиафайл");
                 }
 
                 return new {
@@ -144,8 +144,7 @@ namespace WebApplication1.Controllers
                     m.ReplyToMessageId,
                     ReplyToMessageText = replyText,
                     ReplyToMessageSender = replySender,
-                    Reactions = _context.MessageReactions
-                        .Where(r => r.MessageID == m.MessageID)
+                    Reactions = m.Reactions
                         .GroupBy(r => r.Emoji)
                         .Select(g => new { Emoji = g.Key, Count = g.Count(), UserReacted = g.Any(r => r.UserID == CurrentUserId) })
                         .ToList(),

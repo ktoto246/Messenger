@@ -72,7 +72,8 @@ namespace WebApplication1.Controllers
         public async Task<IActionResult> DeleteStory(int id)
         {
             var story = await _context.Stories.FindAsync(id);
-            if (story == null || story.UserID != CurrentUserId) return Unauthorized();
+            if (story == null) return NotFound();
+            if (story.UserID != CurrentUserId) return Forbid();
 
             story.IsDeleted = true;
             await _context.SaveChangesAsync();

@@ -54,7 +54,8 @@ builder.Services.AddAuthentication(options =>
         {
             var accessToken = context.Request.Query["access_token"];
             var path = context.HttpContext.Request.Path;
-            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/chatHub"))
+            if (!string.IsNullOrEmpty(accessToken) && 
+                (path.StartsWithSegments("/chatHub") || path.StartsWithSegments("/callHub")))
             {
                 context.Token = accessToken;
             }
@@ -68,9 +69,9 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("FlutterDevPolicy", policy =>
     {
-        policy.AllowAnyHeader()
+        policy.WithOrigins("http://localhost:3000", "http://localhost:5000", "http://localhost:8080", "http://localhost:5121") // 🛡️ Список разрешенных
+              .AllowAnyHeader()
               .AllowAnyMethod()
-              .SetIsOriginAllowed(_ => true) 
               .AllowCredentials();           
     });
 });
@@ -125,8 +126,9 @@ app.MapHub<CallHub>("/callHub");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureDeleted(); // Удаляем недосозданную базу
-    db.Database.EnsureCreated(); // Создаем с нуля без ошибок
+    // 🛡️ В продакшне НЕЛЬЗЯ использовать EnsureDeleted()
+    // db.Database.EnsureDeleted(); 
+    db.Database.EnsureCreated(); 
 }
 
 app.Run();

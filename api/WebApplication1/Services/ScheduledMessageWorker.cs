@@ -42,7 +42,18 @@ namespace WebApplication1.Services
                         // Уведомляем клиентов через SignalR
                         foreach (var msg in pendingMessages)
                         {
-                            await _hubContext.Clients.Group(msg.ChatID.ToString()).SendAsync("ReceiveMessage");
+                            var sender = await context.Users.FindAsync(msg.SenderUserID);
+                            await _hubContext.Clients.Group(msg.ChatID.ToString()).SendAsync("ReceiveMessage", new {
+                                msg.MessageID,
+                                msg.SenderUserID,
+                                msg.ContentText,
+                                msg.SentAt,
+                                msg.ImageUrl,
+                                msg.MessageType,
+                                msg.ReplyToMessageId,
+                                SenderName = sender?.DisplayName,
+                                msg.IsViewOnce
+                            });
                         }
                     }
                 }

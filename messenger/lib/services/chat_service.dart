@@ -347,9 +347,10 @@ class ChatService {
   Future<List<dynamic>> searchMessages(String query) async {
     try {
       final headers = await _getHeaders();
-      final response = await http.get(Uri.parse('$baseUrl/messages/search?query=$query'), headers: headers);
+      final encodedQuery = Uri.encodeQueryComponent(query);
+      final response = await http.get(Uri.parse('$baseUrl/messages/search?query=$encodedQuery'), headers: headers);
       if (response.statusCode == 200) return jsonDecode(response.body);
-    } catch (e) { print("Ошибка поиска: $e"); }
+    } catch (e) { /* debugPrint("Ошибка поиска: $e"); */ }
     return [];
   }
 }

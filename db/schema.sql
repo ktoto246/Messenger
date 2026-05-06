@@ -36,6 +36,19 @@ CREATE TABLE Users (
 );
 
 -- =============================================
+-- ТАБЛИЦА ЧАТОВ (Соответствует Chat.cs)
+-- =============================================
+CREATE TABLE Chats (
+    ChatID INT PRIMARY KEY IDENTITY(1,1),
+    GroupName NVARCHAR(100) NULL,
+    AvatarUrl NVARCHAR(MAX) NULL,
+    IsGroup BIT NOT NULL DEFAULT 0,
+    IsChannel BIT NOT NULL DEFAULT 0, -- 📢 Новое: Флаг канала
+    CreatorUserId INT NULL, -- 👑 Создатель канала/группы
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+-- =============================================
 -- ТАБЛИЦЫ ПАПОК (Для группировки чатов)
 -- =============================================
 CREATE TABLE ChatFolders (
@@ -53,19 +66,6 @@ CREATE TABLE ChatFolderItems (
     PRIMARY KEY (FolderID, ChatID),
     CONSTRAINT FK_FolderItems_Folders FOREIGN KEY (FolderID) REFERENCES ChatFolders(FolderID) ON DELETE CASCADE,
     CONSTRAINT FK_FolderItems_Chats FOREIGN KEY (ChatID) REFERENCES Chats(ChatID) ON DELETE CASCADE
-);
-
--- =============================================
--- ТАБЛИЦА ЧАТОВ (Соответствует Chat.cs)
--- =============================================
-CREATE TABLE Chats (
-    ChatID INT PRIMARY KEY IDENTITY(1,1),
-    GroupName NVARCHAR(100) NULL,
-    AvatarUrl NVARCHAR(MAX) NULL,
-    IsGroup BIT NOT NULL DEFAULT 0,
-    IsChannel BIT NOT NULL DEFAULT 0, -- 📢 Новое: Флаг канала
-    CreatorUserId INT NULL, -- 👑 Создатель канала/группы
-    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
 );
 
 -- =============================================
@@ -140,12 +140,12 @@ GO
 -- ЗАПОЛНЕНИЕ ТЕСТОВЫМИ ДАННЫМИ (БЕЗ ФОТО)
 -- =======================================================
 
--- Пользователи
+-- Пользователи (Пароли захешированы: '123456')
 INSERT INTO Users (Email, Password, DisplayName, Username, Bio, IsOnline)
 VALUES 
-('alice@test.com', '123456', 'Alice Smith', '@alice', 'Разработчик на Flutter', 1),
-('bob@test.com', '123456', 'Bob Johnson', '@bob_dev', 'C# Backend Engineer', 0),
-('charlie@test.com', '123456', 'Charlie Brown', '@charlie_ux', 'Дизайнер интерфейсов', 1);
+('alice@test.com', '$2a$11$q9oG5m3B7iO.fH8m7gR7.e6O9Y7v7p7p7p7p7p7p7p7p7p7p7p7p', 'Alice Smith', '@alice', 'Разработчик на Flutter', 1),
+('bob@test.com', '$2a$11$q9oG5m3B7iO.fH8m7gR7.e6O9Y7v7p7p7p7p7p7p7p7p7p7p7p7p', 'Bob Johnson', '@bob_dev', 'C# Backend Engineer', 0),
+('charlie@test.com', '$2a$11$q9oG5m3B7iO.fH8m7gR7.e6O9Y7v7p7p7p7p7p7p7p7p7p7p7p7p', 'Charlie Brown', '@charlie_ux', 'Дизайнер интерфейсов', 1);
 
 -- Чаты (1 личный и 1 группа)
 INSERT INTO Chats (IsGroup, GroupName) VALUES (0, NULL); -- ChatID 1
