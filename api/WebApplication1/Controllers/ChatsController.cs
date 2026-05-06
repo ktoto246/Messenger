@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using WebApplication1.Services;
 
 namespace WebApplication1.Controllers
 {
@@ -17,10 +18,14 @@ namespace WebApplication1.Controllers
     public class ChatsController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly PushNotificationService _pushService;
+        private readonly Microsoft.AspNetCore.SignalR.IHubContext<WebApplication1.Hubs.ChatHub> _hubContext;
 
-        public ChatsController(AppDbContext context)
+        public ChatsController(AppDbContext context, PushNotificationService pushService, Microsoft.AspNetCore.SignalR.IHubContext<WebApplication1.Hubs.ChatHub> hubContext)
         {
             _context = context;
+            _pushService = pushService;
+            _hubContext = hubContext;
         }
 
         // Хелпер для получения ID текущего пользователя из JWT
@@ -97,12 +102,28 @@ namespace WebApplication1.Controllers
             if (!isParticipant) return Forbid();
 
             var rawMessages = await _context.Messages
-                .Where(m => m.ChatID == chatId)
+                .Where(m => m.ChatID == chatId && (m.ScheduledAt == null || m.ScheduledAt <= DateTime.UtcNow))
                 .OrderByDescending(m => m.SentAt)
                 .Skip(skip)
                 .Take(take)
-                .Select(m => new
-                {
+                .Include(m => m.SenderUser) // 🛡️ Загружаем отправителя
+                .ToListAsync();
+
+            var messages = rawMessages.Select(m => {
+                // Безопасно достаем данные ответа
+                string? replyText = null;
+                string? replySender = null;
+                
+                if (m.ReplyToMessageId != null) {
+                    var rMsg = _context.Messages.Include(x => x.SenderUser).FirstOrDefault(x => x.MessageID == m.ReplyToMessageId);
+                    if (rMsg != null) {
+                        replySender = rMsg.SenderUser?.DisplayName;
+                        replyText = !string.IsNullOrEmpty(rMsg.ContentText) ? rMsg.ContentText : 
+                                    (rMsg.MessageType == "Image" ? "📷 Фотография" : "📎 Медиафайл");
+                    }
+                }
+
+                return new {
                     m.MessageID,
                     m.SenderUserID,
                     m.ContentText,
@@ -113,35 +134,17 @@ namespace WebApplication1.Controllers
                     m.IsPinned,
                     m.MessageType,
                     m.ReplyToMessageId,
-                    ReplyMessage = m.ReplyToMessageId != null ? _context.Messages.FirstOrDefault(x => x.MessageID == m.ReplyToMessageId) : null,
-                    ReplySenderName = m.ReplyToMessageId != null
-                        ? _context.Users.FirstOrDefault(u => u.UserID == _context.Messages.FirstOrDefault(x => x.MessageID == m.ReplyToMessageId).SenderUserID).DisplayName
-                        : null
-                })
-                .ToListAsync();
-
-            var messages = rawMessages.Select(m => new
-            {
-                m.MessageID,
-                m.SenderUserID,
-                m.ContentText,
-                m.SentAt,
-                m.IsRead,
-                m.IsEdited,
-                m.ImageUrl,
-                m.IsPinned,
-                m.MessageType,
-                m.ReplyToMessageId,
-                ReplyToMessageText = m.ReplyMessage != null
-                    ? (!string.IsNullOrEmpty(m.ReplyMessage.ContentText)
-                        ? m.ReplyMessage.ContentText
-                        : (m.ReplyMessage.MessageType == "Image" ? "📷 Фотография"
-                          : m.ReplyMessage.MessageType == "Audio" ? "🎤 Голосовое сообщение"
-                          : m.ReplyMessage.MessageType == "VideoNote" ? "📹 Видеосообщение"
-                          : m.ReplyMessage.MessageType == "Video" ? "🎥 Видео"
-                          : "Медиафайл"))
-                    : null,
-                ReplyToMessageSender = m.ReplySenderName
+                    ReplyToMessageText = replyText,
+                    ReplyToMessageSender = replySender,
+                    Reactions = _context.MessageReactions
+                        .Where(r => r.MessageID == m.MessageID)
+                        .GroupBy(r => r.Emoji)
+                        .Select(g => new { Emoji = g.Key, Count = g.Count(), UserReacted = g.Any(r => r.UserID = CurrentUserId) })
+                        .ToList(),
+                    m.IsViewOnce,
+                    IsExpired = m.IsViewOnce && m.ViewedAt != null,
+                    m.TranslatedText
+                };
             }).ToList();
 
             return Ok(messages);
@@ -157,21 +160,60 @@ namespace WebApplication1.Controllers
             var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
             if (!isParticipant) return Forbid();
 
+            // 📢 Проверка Канала (только админы пишут)
+            var chat = await _context.Chats.FindAsync(chatId);
+            if (chat != null && chat.IsChannel)
+            {
+                var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+                if (participant == null || !participant.IsAdmin) return Forbid();
+            }
+
             var newMessage = new Message
             {
                 ChatID = chatId,
-                SenderUserID = CurrentUserId, // 🛡️ Берем из токена
+                SenderUserID = CurrentUserId, 
                 ContentText = dto.Content ?? "",
-                SentAt = DateTime.UtcNow,
+                SentAt = dto.ScheduledAt ?? DateTime.UtcNow,
+                ScheduledAt = dto.ScheduledAt, // Если есть - планируем
                 IsRead = false,
                 IsEdited = false,
                 ImageUrl = dto.MediaUrl,
                 ReplyToMessageId = dto.ReplyToMessageId,
-                MessageType = dto.MessageType
+                MessageType = dto.MessageType,
+                IsViewOnce = dto.IsViewOnce
             };
 
             _context.Messages.Add(newMessage);
             await _context.SaveChangesAsync();
+
+            // ⚡️ РЕАЛЬНОЕ ВРЕМЯ (SignalR): Уведомляем участников чата
+            await _hubContext.Clients.Group(chatId.ToString()).SendAsync("ReceiveMessage");
+
+            // 🔔 ОТПРАВКА PUSH-УВЕДОМЛЕНИЙ
+            _ = Task.Run(async () => {
+                try {
+                    var participants = await _context.ChatParticipants
+                        .Where(cp => cp.ChatID == chatId && cp.UserID != CurrentUserId)
+                        .Include(cp => cp.User)
+                        .ToListAsync();
+
+                    var tokens = participants
+                        .Where(p => !string.IsNullOrEmpty(p.User.FcmToken))
+                        .Select(p => p.User.FcmToken)
+                        .ToList();
+
+                    if (tokens.Any()) {
+                        // 🔔 РЕАЛЬНАЯ ОТПРАВКА ЧЕРЕЗ СЕРВИС
+                        var sender = await _context.Users.FindAsync(CurrentUserId);
+                        var chat = await _context.Chats.FindAsync(chatId);
+                        string title = chat?.IsGroup == true ? (chat.GroupName ?? "Группа") : (sender?.DisplayName ?? "Новое сообщение");
+                        string body = chat?.IsGroup == true ? $"{sender?.DisplayName}: {newMessage.ContentText}" : (newMessage.ContentText ?? "Медиафайл");
+                        
+                        await _pushService.SendNotificationAsync(tokens, title, body, newMessage.ImageUrl);
+                    }
+                } catch { /* Игнорируем ошибки пушей */ }
+            });
+
             return Ok(newMessage);
         }
 
@@ -205,6 +247,9 @@ namespace WebApplication1.Controllers
         public async Task<IActionResult> CreatePrivateChat([FromBody] int targetUserId)
         {
             var currentUserId = CurrentUserId;
+
+            var targetUserExists = await _context.Users.AnyAsync(u => u.UserID == targetUserId);
+            if (!targetUserExists) return BadRequest("Пользователь не найден");
 
             var existingChat = await _context.Chats
                 .Where(c => !c.IsGroup &&
@@ -277,6 +322,16 @@ namespace WebApplication1.Controllers
 
             _context.ChatParticipants.Remove(participant);
             await _context.SaveChangesAsync();
+
+            // 🛡️ Очистка "осиротевших" чатов
+            var remainingParticipants = await _context.ChatParticipants.CountAsync(cp => cp.ChatID == chatId);
+            if (remainingParticipants == 0)
+            {
+                var chat = await _context.Chats.FindAsync(chatId);
+                if (chat != null) _context.Chats.Remove(chat);
+                await _context.SaveChangesAsync();
+            }
+
             return Ok(new { success = true });
         }
 
@@ -309,7 +364,13 @@ namespace WebApplication1.Controllers
 
             _context.ChatParticipants.Add(new ChatParticipant { ChatID = chat.ChatID, UserID = CurrentUserId, IsAdmin = true });
 
-            foreach (var userId in request.MemberUserIds)
+            // 🛡️ Защита от несуществующих пользователей (Фантомов)
+            var validUserIds = await _context.Users
+                .Where(u => request.MemberUserIds.Contains(u.UserID))
+                .Select(u => u.UserID)
+                .ToListAsync();
+
+            foreach (var userId in validUserIds)
             {
                 if (userId != CurrentUserId)
                 {
@@ -359,7 +420,13 @@ namespace WebApplication1.Controllers
             var admin = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId && cp.IsAdmin);
             if (admin == null) return Forbid();
 
-            foreach (var userId in userIds)
+            // 🛡️ Защита от несуществующих пользователей
+            var validUserIds = await _context.Users
+                .Where(u => userIds.Contains(u.UserID))
+                .Select(u => u.UserID)
+                .ToListAsync();
+
+            foreach (var userId in validUserIds)
             {
                 if (!await _context.ChatParticipants.AnyAsync(p => p.ChatID == chatId && p.UserID == userId))
                 {

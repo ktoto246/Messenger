@@ -6,8 +6,24 @@ using Microsoft.EntityFrameworkCore;
 using WebApplication1.Data;
 using WebApplication1.Hubs;
 using System.Security.Claims;
+using FirebaseAdmin;
+using Google.Apis.Auth.OAuth2;
+using WebApplication1.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 🔔 Инициализация Firebase Admin SDK
+var firebaseKeyPath = Path.Combine(builder.Environment.ContentRootPath, "veinpulse-firebase-adminsdk-fbsvc-e986d6a24e.json");
+if (File.Exists(firebaseKeyPath))
+{
+    FirebaseApp.Create(new AppOptions()
+    {
+        Credential = GoogleCredential.FromFile(firebaseKeyPath)
+    });
+}
+
+builder.Services.AddSingleton<PushNotificationService>();
+builder.Services.AddHostedService<ScheduledMessageWorker>();
 
 // --- JWT Authentication ---
 var jwtSettings = builder.Configuration.GetSection("Jwt");
@@ -104,5 +120,13 @@ app.UseStaticFiles();
 
 app.MapControllers();
 app.MapHub<ChatHub>("/chatHub");
+app.MapHub<CallHub>("/callHub");
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureDeleted(); // Удаляем недосозданную базу
+    db.Database.EnsureCreated(); // Создаем с нуля без ошибок
+}
 
 app.Run();

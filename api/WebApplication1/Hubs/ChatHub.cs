@@ -46,5 +46,33 @@ namespace WebApplication1.Hubs
                 await Clients.Group(chatId).SendAsync("UserTyping", chatId, userId);
             }
         }
+
+        public async Task SendReaction(string chatId, long messageId)
+        {
+            // 🛡️ Проверка: является ли пользователь участником этого чата
+            if (int.TryParse(chatId, out int id))
+            {
+                var isParticipant = await _context.ChatParticipants
+                    .AnyAsync(cp => cp.ChatID == id && cp.UserID == CurrentUserId);
+
+                if (isParticipant)
+                {
+                    await Clients.Group(chatId).SendAsync("UpdateReaction", messageId);
+                }
+            }
+        }
+
+        // 🔔 ГАЛОЧКИ ПРОЧТЕНИЯ
+        public async Task MarkAsRead(string chatId, long messageId)
+        {
+            var msg = await _context.Messages.FindAsync(messageId);
+            if (msg != null && msg.ChatID.ToString() == chatId)
+            {
+                msg.IsRead = true;
+                msg.ReadAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                await Clients.Group(chatId).SendAsync("MessageRead", messageId);
+            }
+        }
     }
 }

@@ -52,6 +52,13 @@ obj/
 TestResults/
 # Если у вас лежат секреты в Development конфиге, раскоментируй строку ниже:
 # appsettings.Development.json
+veinpulse-firebase-adminsdk-fbsvc-e986d6a24e.json
+google-services.json
+google-services.json
+**/google-services.json
+*.json
+!appsettings.json
+!appsettings.Development.json
 
 # ==========================
 # БАЗА ДАННЫХ

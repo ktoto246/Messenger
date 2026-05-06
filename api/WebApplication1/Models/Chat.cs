@@ -11,6 +11,8 @@ namespace WebApplication1.Models
         public string? GroupName { get; set; } // Название, если это группа
         public string? AvatarUrl { get; set; } // Ссылка на аватарку группы
         public bool IsGroup { get; set; } = false;
+        public bool IsChannel { get; set; } = false;
+        public int? CreatorUserId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

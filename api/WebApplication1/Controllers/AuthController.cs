@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using WebApplication1.Data;
 using WebApplication1.DTOs;
@@ -109,9 +110,7 @@ namespace WebApplication1.Controllers
             {
                 Subject = new ClaimsIdentity(new[]
                 {
-                    new Claim(ClaimTypes.NameIdentifier, user.UserID.ToString()),
-                    new Claim(ClaimTypes.Email, user.Email),
-                    new Claim(ClaimTypes.Name, user.DisplayName)
+                    new Claim(ClaimTypes.NameIdentifier, user.UserID.ToString())
                 }),
                 Expires = DateTime.UtcNow.AddDays(7),
                 Issuer = jwtSettings["Issuer"],

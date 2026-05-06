@@ -3,11 +3,12 @@ import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/app_config.dart';
 
 class AuthService {
   static const String baseUrl = '${AppConfig.baseUrl}/auth'; 
-
+  final _storage = const FlutterSecureStorage();
   Future<bool> login(String email, String password) async {
     try {
       final response = await http.post(
@@ -22,9 +23,8 @@ class AuthService {
         String? token = data['token']; // 🛡️ Получаем JWT токен
 
         if (userId != null && token != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setInt('userId', userId);
-          await prefs.setString('token', token); // 🛡️ Сохраняем токен
+          await _storage.write(key: 'userId', value: userId.toString());
+          await _storage.write(key: 'token', value: token);
           return true;
         }
       } 
@@ -55,19 +55,18 @@ class AuthService {
   }
 
   static Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('token');
+    const storage = FlutterSecureStorage();
+    return await storage.read(key: 'token');
   }
 
   Future<int?> getCurrentUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt('userId');
+    String? id = await _storage.read(key: 'userId');
+    return id != null ? int.tryParse(id) : null;
   }
 
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('userId');
-    await prefs.remove('token');
+    await _storage.delete(key: 'userId');
+    await _storage.delete(key: 'token');
   }
 
   Future<void> updateOnlineStatus(bool isOnline) async {

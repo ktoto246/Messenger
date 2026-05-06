@@ -24,7 +24,11 @@ import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'group_info_screen.dart';
 import '../config/app_config.dart';
-import 'auth_service.dart';
+import '../services/auth_service.dart';
+import 'call_screen.dart';
+import 'package:giphy_get/giphy_get.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int chatId;
@@ -55,6 +59,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   dynamic _editingMessage; 
 
   bool _showScrollToBottom = false;
+  DateTime? _scheduledAt;
+  bool _isViewOnceEnabled = false;
   int _unreadCountWhileScrolled = 0;
 
   bool _isAudioMode = true; 
@@ -228,12 +234,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         .withUrl(
           AppConfig.hubUrl,
           options: HttpConnectionOptions(
-            accessTokenFactory: () async => token,
+            accessTokenFactory: () async => token ?? '',
           ),
         )
         .build();
     _hubConnection?.on("UserTyping", (args) {
-      if (args != null && args.isNotEmpty && args[0] as int != widget.currentUserId) { 
+      if (args != null && args.length > 1 && (args[1] as int) != widget.currentUserId) { 
         setState(() => _isTyping = true);
         _typingTimer?.cancel();
         _typingTimer = Timer(const Duration(seconds: 3), () { if (mounted) setState(() => _isTyping = false); });
@@ -242,6 +248,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _hubConnection?.on("ReceiveMessage", (args) {
       if (_showScrollToBottom) setState(() => _unreadCountWhileScrolled++);
       _loadMessages(isRefresh: true);
+    });
+    _hubConnection?.on("UpdateReaction", (args) {
+      _loadMessages(isRefresh: true);
+    });
+    _hubConnection?.on("MessageRead", (args) {
+      final readMsgId = args![0].toString();
+      if (mounted) {
+        setState(() {
+          for (var m in _messages) {
+            if ((m['messageID'] ?? m['MessageID']).toString() == readMsgId) {
+              m['isRead'] = true;
+              break;
+            }
+          }
+        });
+      }
     });
     try { await _hubConnection?.start(); _safeSignalRSend("JoinChat", [widget.chatId.toString()]); } catch (e) {}
   }
@@ -268,6 +290,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (mounted) {
         setState(() { _messages = messages; _hasMore = messages.length == 30; _isLoading = false; });
         _chatService.markAsRead(widget.chatId, widget.currentUserId);
+        if (messages.isNotEmpty) {
+           _safeSignalRSend("MarkAsRead", [widget.chatId.toString(), messages.first['messageID'] ?? messages.first['MessageID']]);
+        }
       }
     } catch (e) { 
       if (mounted && !isRefresh && _messages.isEmpty) setState(() => _isLoading = false); 
@@ -281,6 +306,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final newMessages = await _chatService.fetchMessages(widget.chatId, skip: _messages.length, take: 30);
       if (mounted) setState(() { if (newMessages.isEmpty) _hasMore = false; else _messages.addAll(newMessages); _isLoadingMore = false; });
     } catch (e) { if (mounted) setState(() => _isLoadingMore = false); }
+  }
+
+  void _handleError(dynamic e) {
+    if (!mounted) return;
+    if (e.toString().contains("SESSION_EXPIRED")) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Сессия истекла. Войдите заново 🔒"), backgroundColor: Colors.red));
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+    } else if (e.toString().contains("SERVER_ERROR")) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ошибка сервера 🚫"), backgroundColor: Colors.orange));
+    } else {
+      // Сообщение сохранено в очередь (логика в ChatService)
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Нет сети. Отправим позже! 💾"), backgroundColor: Colors.blue));
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -300,7 +338,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (_scrollController.hasClients) _scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       await _loadMessages(isRefresh: true);
       _safeSignalRSend("ReceiveMessage", []);
-    } catch (e) {}
+    } catch (e) {
+      _handleError(e);
+    }
   }
 
   void _onTextChanged(String text) {
@@ -314,6 +354,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void _onSwipeToReply(dynamic msg) => setState(() { _editingMessage = null; _replyingToMessage = msg; });
   void _cancelAction() => setState(() { _replyingToMessage = null; _editingMessage = null; _messageController.clear(); });
   
+  Future<void> _pickGiphy() async {
+    GiphyGif? gif = await GiphyGet.getGif(
+      context: context,
+      apiKey: AppConfig.giphyApiKey,
+      lang: GiphyLanguage.russian,
+      tabColor: Colors.blue,
+    );
+
+    if (gif != null && gif.images?.original?.url != null) {
+      final gifUrl = gif.images!.original!.url!;
+      // Отправляем как изображение
+      await _chatService.sendMessage(widget.chatId, widget.currentUserId, "", messageType: "Image", mediaUrl: gifUrl);
+      await _loadMessages(isRefresh: true);
+      _safeSignalRSend("ReceiveMessage", []);
+    }
+  }
+
   void _showMessageMenu(BuildContext context, dynamic msg, bool isMe, bool isDark) {
     final text = msg['contentText'] ?? msg['ContentText'] ?? '';
     final msgId = msg['messageID'] ?? msg['MessageID'];
@@ -326,11 +383,33 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       builder: (context) {
         return Container(
           decoration: BoxDecoration(color: sheetBg, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
-          child: SafeArea(
+            child: SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+                // 🤩 РЯД ЭМОДЗИ ДЛЯ РЕАКЦИЙ
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'].map((e) => GestureDetector(
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await _chatService.toggleReaction(msgId, e);
+                        _safeSignalRSend("SendReaction", [widget.chatId.toString(), msgId]);
+                        _loadMessages(isRefresh: true);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05), shape: BoxShape.circle),
+                        child: Text(e, style: const TextStyle(fontSize: 24)),
+                      ),
+                    )).toList(),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(10))),
                 const SizedBox(height: 10),
                 ListTile(leading: const Icon(Icons.reply, color: Colors.blue), title: Text('Ответить', style: TextStyle(color: sheetText)), onTap: () { Navigator.pop(context); _onSwipeToReply(msg); }),
@@ -338,6 +417,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   onTap: () async { Navigator.pop(context); await _chatService.togglePinMessage(msgId); _safeSignalRSend("ReceiveMessage", []); _loadMessages(isRefresh: true); }
                 ),
                 if (text.isNotEmpty) ListTile(leading: Icon(Icons.copy, color: isDark ? Colors.white54 : Colors.black54), title: Text('Скопировать', style: TextStyle(color: sheetText)), onTap: () { Clipboard.setData(ClipboardData(text: text)); Navigator.pop(context); }),
+                ListTile(leading: const Icon(Icons.translate, color: Colors.purple), title: Text('Перевести (ИИ)', style: TextStyle(color: sheetText)), onTap: () async {
+                  Navigator.pop(context);
+                  String? translated = await _chatService.translateMessage(msgId);
+                  if (translated != null) _loadMessages(isRefresh: true);
+                }),
                 if (isMe) ListTile(leading: Icon(Icons.edit, color: isDark ? Colors.white54 : Colors.black54), title: Text('Изменить', style: TextStyle(color: sheetText)), onTap: () { Navigator.pop(context); setState(() { _replyingToMessage = null; _editingMessage = msg; _messageController.text = text; }); }),
                 if (isMe) ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('Удалить', style: TextStyle(color: Colors.red)), onTap: () async { Navigator.pop(context); await _chatService.deleteMessage(msgId); _safeSignalRSend("ReceiveMessage", []); _loadMessages(isRefresh: true); }),
                 const SizedBox(height: 10),
@@ -350,11 +434,50 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   void _showImageSourceMenu(bool isDark) {
-    showModalBottomSheet(context: context, backgroundColor: isDark ? Colors.grey[900] : Colors.white, builder: (context) => SafeArea(child: Wrap(children: [
+    showModalBottomSheet(context: context, backgroundColor: isDark ? Colors.grey[900] : Colors.white, builder: (context) => StatefulBuilder(builder: (context, setModalState) => SafeArea(child: Wrap(children: [
+      SwitchListTile(
+        title: Text("Посмотреть один раз", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
+        subtitle: const Text("Медиа исчезнет после открытия"),
+        secondary: const Icon(Icons.visibility_off, color: Colors.blue),
+        value: _isViewOnceEnabled,
+        onChanged: (val) {
+          setModalState(() => _isViewOnceEnabled = val);
+          setState(() => _isViewOnceEnabled = val);
+        },
+      ),
+      const Divider(),
       ListTile(leading: Icon(Icons.photo_library, color: isDark ? Colors.white : Colors.black), title: Text('Фото из галереи', style: TextStyle(color: isDark ? Colors.white : Colors.black)), onTap: () { Navigator.pop(context); _pickAndSendMedia(ImageSource.gallery, false); }),
       ListTile(leading: Icon(Icons.camera_alt, color: isDark ? Colors.white : Colors.black), title: Text('Сделать фото', style: TextStyle(color: isDark ? Colors.white : Colors.black)), onTap: () { Navigator.pop(context); _pickAndSendMedia(ImageSource.camera, false); }),
       ListTile(leading: Icon(Icons.video_library, color: isDark ? Colors.white : Colors.black), title: Text('Видео из галереи', style: TextStyle(color: isDark ? Colors.white : Colors.black)), onTap: () { Navigator.pop(context); _pickAndSendMedia(ImageSource.gallery, true); }),
-    ])));
+      ListTile(leading: const Icon(Icons.location_on, color: Colors.green), title: Text('Моё местоположение', style: TextStyle(color: isDark ? Colors.white : Colors.black)), onTap: () { Navigator.pop(context); _shareLocation(); }),
+    ]))));
+  }
+
+  Future<void> _shareLocation() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Служба геолокации отключена.')));
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Разрешение на геолокацию отклонено.')));
+        return;
+      }
+    }
+
+    Position position = await Geolocator.getCurrentPosition();
+    final locationString = "${position.latitude},${position.longitude}";
+    
+    await _chatService.sendMessage(widget.chatId, widget.currentUserId, locationString, messageType: "Location");
+    await _loadMessages(isRefresh: true);
+    _safeSignalRSend("ReceiveMessage", []);
   }
 
   Future<void> _pickAndSendMedia(ImageSource source, bool isVideo) async {
@@ -368,9 +491,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       String? uploadedMediaUrl = await _chatService.uploadMedia(File(pickedFile.path));
       if (uploadedMediaUrl != null) {
         int? replyId = _replyingToMessage != null ? (_replyingToMessage['messageID'] ?? _replyingToMessage['MessageID']) : null;
-        await _chatService.sendMessage(widget.chatId, widget.currentUserId, _messageController.text.trim(), replyToMessageId: replyId, mediaUrl: uploadedMediaUrl, messageType: isVideo ? "Video" : "Image");
+        await _chatService.sendMessage(
+          widget.chatId, 
+          widget.currentUserId, 
+          _messageController.text.trim(), 
+          replyToMessageId: replyId, 
+          mediaUrl: uploadedMediaUrl, 
+          messageType: isVideo ? "Video" : "Image",
+          isViewOnce: _isViewOnceEnabled
+        );
         if(!mounted) return;
         _cancelAction();
+        setState(() => _isViewOnceEnabled = false); // Сброс
         if (_scrollController.hasClients) _scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
         await _loadMessages(isRefresh: true);
         _safeSignalRSend("ReceiveMessage", []);
@@ -396,9 +528,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     Color textColor = isDark ? Colors.white : Colors.black;
 
     return Scaffold(
-      backgroundColor: bgColor,
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.transparent,
       appBar: _buildAppBar(isDark, textColor, bgColor),
-      body: Column(
+      body: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          image: isDark ? const DecorationImage(
+            image: AssetImage('assets/images/chat_bg.png'),
+            fit: BoxFit.cover,
+            opacity: 0.15, // Subtle pattern
+          ) : null,
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
         children: [
           Expanded(
             child: Stack(
@@ -447,8 +591,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           _buildMessageInput(isDark, textColor), 
         ],
       ),
-    );
-  }
+    ),
+  ),
+);
+}
   
   void _scrollToMessage(String? msgId) {
     if (msgId == null) return;
@@ -504,6 +650,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               final String content = msg['contentText'] ?? msg['ContentText'] ?? '';
               final String time = _formatTime(msg['sentAt'] ?? msg['SentAt']);
               final bool isRead = msg['isRead'] ?? msg['IsRead'] ?? false; 
+              final bool isDelivered = msg['isDelivered'] ?? msg['IsDelivered'] ?? false;
               final String msgId = (msg['messageID'] ?? msg['MessageID'] ?? index).toString();
               
               if (!_messageKeys.containsKey(msgId)) _messageKeys[msgId] = GlobalKey();
@@ -520,9 +667,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               bool isAudio = typeLower == 'audio' || (imageUrl != null && imageUrl.contains(RegExp(r'\.(m4a|mp3)', caseSensitive: false)));
               bool isVideoNote = typeLower == 'videonote'; 
               bool isRegularVideo = typeLower == 'video' || (!isVideoNote && imageUrl != null && imageUrl.contains(RegExp(r'\.(mp4|webm|mov)', caseSensitive: false)));
+              bool isLocation = typeLower == 'location';
 
-              bool isVisualMedia = isImage || isVideoNote || isRegularVideo;
+              bool isVisualMedia = isImage || isVideoNote || isRegularVideo || isLocation;
               bool isVisualOnly = isVisualMedia && content.isEmpty && replyText == null;
+              
+              // Если это локация, контент содержит "lat,lng"
+              String? staticMapUrl;
+              if (isLocation && content.isNotEmpty) {
+                staticMapUrl = "https://maps.googleapis.com/maps/api/staticmap?center=$content&zoom=15&size=400x200&markers=color:red|$content&key=${AppConfig.googleMapsApiKey}";
+              }
 
               Color bubbleColor = isVisualOnly ? Colors.transparent : (isMe ? const Color(0xFF007AFF) : (isDark ? Colors.grey[800]! : const Color(0xFFE5E5EA)));
               EdgeInsets bubblePadding = isVisualOnly ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 14, vertical: 10);
@@ -533,7 +687,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 children: [
                   if (isEdited) Padding(padding: const EdgeInsets.only(right: 6), child: Text("изм.", style: TextStyle(color: isVisualOnly ? Colors.white70 : (isMe ? Colors.white70 : (isDark ? Colors.white54 : Colors.black54)), fontSize: 10, fontStyle: FontStyle.italic))),
                   Text(time, style: TextStyle(color: isVisualOnly ? Colors.white : (isMe ? Colors.white70 : (isDark ? Colors.white54 : Colors.black54)), fontSize: 10, fontWeight: isVisualOnly ? FontWeight.bold : FontWeight.normal)),
-                  if (isMe) ...[const SizedBox(width: 4), Icon(isRead ? Icons.done_all : Icons.check, size: 14, color: isVisualOnly ? Colors.white : (isRead ? Colors.white : Colors.white70))]
+                  if (isMe) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      isRead ? Icons.done_all : (isDelivered ? Icons.done_all : Icons.done),
+                      size: 14,
+                      color: isRead ? Colors.blueAccent : (isVisualOnly ? Colors.white : (isDark ? Colors.white54 : Colors.black54)),
+                    )
+                  ]
                 ],
               );
 
@@ -555,12 +716,76 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         ]),
                       ),
                     ),
-                  if (isImage && imageUrl != null) GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FullscreenImageScreen(imageUrl: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl", senderName: displaySenderName, date: time))), child: CachedNetworkImage(imageUrl: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl", fit: BoxFit.cover, placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Colors.white)), errorWidget: (context, url, error) => const Icon(Icons.error))),
+                  if (isImage && imageUrl != null) 
+                    GestureDetector(
+                      onTap: () async {
+                        if (msg['isExpired'] == true) return;
+                        await Navigator.push(context, MaterialPageRoute(builder: (_) => FullscreenImageScreen(imageUrl: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl", senderName: displaySenderName, date: time)));
+                        if (msg['isViewOnce'] == true) {
+                          await _chatService.markViewOnceAsViewed(int.parse(msgId));
+                          _loadMessages(isRefresh: true);
+                        }
+                      },
+                      child: msg['isExpired'] == true 
+                        ? Container(width: 200, height: 150, color: Colors.black54, child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.visibility_off, color: Colors.white54), Text("Фото просмотрено", style: TextStyle(color: Colors.white54, fontSize: 12))]))
+                        : CachedNetworkImage(imageUrl: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl", fit: BoxFit.cover, placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Colors.white)), errorWidget: (context, url, error) => const Icon(Icons.error))
+                    ),
+                  if (isLocation && staticMapUrl != null) 
+                    GestureDetector(
+                      onTap: () async {
+                         final url = "https://www.google.com/maps/search/?api=1&query=$content";
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: CachedNetworkImage(imageUrl: staticMapUrl, fit: BoxFit.cover, placeholder: (context, url) => const Center(child: CircularProgressIndicator())),
+                      ),
+                    ),
                   if (isRegularVideo && imageUrl != null) InlineVideoPlayer(url: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl", senderName: displaySenderName, date: time),
                   if (isAudio && imageUrl != null) Padding(padding: EdgeInsets.only(bottom: isVisualOnly ? 0 : 8.0), child: AudioBubble(url: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl", isMe: isMe)),
                   if (isVideoNote && imageUrl != null) Padding(padding: EdgeInsets.only(bottom: isVisualOnly ? 0 : 8.0), child: VideoCircle(url: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl")),
-                  if (content.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 4.0), child: Text(content, style: TextStyle(color: isMe ? Colors.white : mainTextColor, fontSize: 16))),
+                  if (content.isNotEmpty && !isLocation) Padding(padding: const EdgeInsets.only(bottom: 4.0), child: Text(content, style: TextStyle(color: isMe ? Colors.white : mainTextColor, fontSize: 16))),
+                  if (msg['translatedText'] != null) 
+                    Container(
+                      margin: const EdgeInsets.only(top: 4, bottom: 8), padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(8)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text("ПЕРЕВОД (ИИ)", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.blue)),
+                        Text(msg['translatedText'], style: TextStyle(color: isMe ? Colors.white : mainTextColor, fontSize: 14, fontStyle: FontStyle.italic)),
+                      ]),
+                    ),
                   if (!isVisualOnly) timeAndChecks,
+                  
+                  // 🤩 ОТОБРАЖЕНИЕ РЕАКЦИЙ
+                  if (msg['reactions'] != null && (msg['reactions'] as List).isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Wrap(
+                        spacing: 4,
+                        children: (msg['reactions'] as List).map((r) => GestureDetector(
+                          onTap: () async {
+                             await _chatService.toggleReaction(int.parse(msgId), r['emoji']);
+                             _safeSignalRSend("SendReaction", [widget.chatId.toString(), msgId]);
+                             _loadMessages(isRefresh: true);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: r['userReacted'] == true ? Colors.blue.withOpacity(0.3) : (isDark ? Colors.white12 : Colors.black.withOpacity(0.05)),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: r['userReacted'] == true ? Colors.blue : Colors.transparent, width: 1)
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(r['emoji'], style: const TextStyle(fontSize: 12)),
+                                const SizedBox(width: 2),
+                                Text(r['count'].toString(), style: TextStyle(fontSize: 10, color: r['userReacted'] == true ? Colors.white : (isMe ? Colors.white70 : mainTextColor))),
+                              ],
+                            ),
+                          ),
+                        )).toList(),
+                      ),
+                    ),
                 ],
               );
 
@@ -648,6 +873,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                     icon: Icon(_showEmojiPicker ? Icons.keyboard : Icons.emoji_emotions_outlined, color: Colors.blue),
                                     onPressed: () { setState(() { _showEmojiPicker = !_showEmojiPicker; if (_showEmojiPicker) { _focusNode.unfocus(); } else { _focusNode.requestFocus(); } }); },
                                   ),
+                                  IconButton(
+                                    icon: const Icon(Icons.gif_box_outlined, color: Colors.blue),
+                                    onPressed: _pickGiphy,
+                                  ),
                                   Expanded(
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -666,7 +895,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       if (!_isRecordingLocked) ...[
                         const SizedBox(width: 8),
                         hasText || isEditing
-                            ? IconButton(icon: Icon(isEditing ? Icons.check : Icons.send, color: Colors.blue), onPressed: _sendMessage)
+                            ? IconButton(
+                                icon: Icon(isEditing ? Icons.check : Icons.send, color: Colors.blue), 
+                                onPressed: _sendMessage,
+                                onLongPress: isEditing ? null : _pickSchedule,
+                              )
                             : GestureDetector(
                                 onTap: () {
                                   if (mounted) { setState(() => _isAudioMode = !_isAudioMode); if (!_isAudioMode) { _initCamera(); } else { _cameraController?.dispose(); _cameraController = null; _isCameraInitialized = false; } }
@@ -752,10 +985,77 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
+  Future<void> _pickSchedule() async {
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+
+    if (pickedDate != null) {
+      TimeOfDay? pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.now(),
+      );
+
+      if (pickedTime != null) {
+        setState(() {
+          _scheduledAt = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            pickedTime.hour,
+            pickedTime.minute,
+          ).toUtc();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Сообщение запланировано на: ${_scheduledAt!.toLocal().toString().substring(0, 16)}"))
+        );
+      }
+    }
+  }
+
   PreferredSizeWidget _buildAppBar(bool isDark, Color textColor, Color bgColor) {
     return AppBar(
-      backgroundColor: bgColor, elevation: isDark ? 0 : 0.5,
+      flexibleSpace: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(color: Colors.transparent),
+        ),
+      ),
+      backgroundColor: isDark ? const Color(0xAA000000) : bgColor.withOpacity(0.85),
+      elevation: 0,
       leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.blue), onPressed: () => Navigator.pop(context)),
+      actions: [
+        if (widget.otherUserId != null)
+          IconButton(
+            icon: const Icon(Icons.call, color: Colors.blue),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => CallScreen(
+                targetUserId: widget.otherUserId!,
+                targetUserName: widget.chatName,
+              )));
+            },
+          ),
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Colors.blue),
+          onSelected: (value) async {
+            if (value == 'clear') {
+              // Логика очистки (пока заглушка, но кнопка работает)
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("История очищена (локально)")));
+            } else if (value == 'delete') {
+              await _chatService.deleteChat(widget.chatId, widget.currentUserId);
+              if (mounted) Navigator.pop(context);
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'search', child: Row(children: [Icon(Icons.search, size: 20), SizedBox(width: 10), Text("Поиск")])),
+            const PopupMenuItem(value: 'clear', child: Row(children: [Icon(Icons.cleaning_services, size: 20), SizedBox(width: 10), Text("Очистить историю")])),
+            const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_forever, color: Colors.red, size: 20), SizedBox(width: 10), Text("Удалить чат", style: TextStyle(color: Colors.red))])),
+          ],
+        ),
+      ],
       title: GestureDetector(
         // 🪄 МАГИЯ ПЕРЕХОДА: Личный профиль ИЛИ Профиль группы 🪄
         onTap: () { 

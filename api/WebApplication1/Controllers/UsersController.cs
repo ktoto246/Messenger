@@ -41,7 +41,7 @@ namespace WebApplication1.Controllers
             }
 
             var users = await usersQuery
-                .Select(u => new { u.UserID, u.DisplayName, u.Username, u.AvatarUrl, u.Email, u.PrivacyMessages, u.IsOnline, u.LastActive })
+                .Select(u => new { u.UserID, u.DisplayName, u.Username, u.AvatarUrl, u.IsOnline, u.LastActive })
                 .Take(20)
                 .ToListAsync();
             return Ok(users);
@@ -53,11 +53,26 @@ namespace WebApplication1.Controllers
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound();
 
+            bool isSelf = id == CurrentUserId;
+
             return Ok(new
             {
-                user.UserID, user.DisplayName, user.Username, user.PhoneNumber, user.Bio, user.AvatarUrl,
-                user.IsOnline, user.LastActive, user.CreatedAt, user.DateOfBirth, user.MusicUrl, user.ThemeColor,
-                user.PrivacyPhone, user.PrivacyAvatar, user.PrivacyMessages, user.IsDarkMode
+                user.UserID, 
+                user.DisplayName, 
+                user.Username, 
+                PhoneNumber = isSelf || (user.PrivacyPhone == false) ? user.PhoneNumber : null, 
+                user.Bio, 
+                AvatarUrl = isSelf || (user.PrivacyAvatar == false) ? user.AvatarUrl : null,
+                user.IsOnline, 
+                user.LastActive, 
+                user.CreatedAt, 
+                DateOfBirth = isSelf ? user.DateOfBirth : null, 
+                user.MusicUrl, 
+                user.ThemeColor,
+                user.PrivacyPhone, 
+                user.PrivacyAvatar, 
+                user.PrivacyMessages, 
+                user.IsDarkMode
             });
         }
 
@@ -73,6 +88,7 @@ namespace WebApplication1.Controllers
             if (updatedData.DisplayName != null) user.DisplayName = updatedData.DisplayName;
             if (updatedData.Bio != null) user.Bio = updatedData.Bio;
             if (updatedData.AvatarUrl != null) user.AvatarUrl = updatedData.AvatarUrl;
+            if (updatedData.FcmToken != null) user.FcmToken = updatedData.FcmToken; // 🔔 Обновление токена для пушей
             if (updatedData.ThemeColor != null) user.ThemeColor = updatedData.ThemeColor;
             if (updatedData.DateOfBirth != null) user.DateOfBirth = updatedData.DateOfBirth;
             if (updatedData.MusicUrl != null) user.MusicUrl = updatedData.MusicUrl;

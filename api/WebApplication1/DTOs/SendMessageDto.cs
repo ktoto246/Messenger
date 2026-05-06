@@ -1,4 +1,4 @@
-﻿namespace WebApplication1.DTOs
+namespace WebApplication1.DTOs
 {
     public class SendMessageDto
     {
@@ -8,5 +8,7 @@
         public long? ReplyToMessageId { get; set; }
         public string? MediaUrl { get; set; } 
         public string MessageType { get; set; } = "Text";
+        public DateTime? ScheduledAt { get; set; } // 🕒 Отложенная отправка
+        public bool IsViewOnce { get; set; } = false; // 👻 Исчезающее медиа
     }
 }

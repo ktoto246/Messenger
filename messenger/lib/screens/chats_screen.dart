@@ -4,7 +4,10 @@ import '../services/chat_service.dart';
 import '../services/auth_service.dart';
 import 'chat_detail_screen.dart';
 import 'new_message_screen.dart';
-import 'profile_screen.dart'; 
+import 'create_folder_screen.dart';
+import 'settings_screen.dart'; 
+import 'search_messages_screen.dart'; 
+import 'profile_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -12,9 +15,12 @@ import 'dart:async';
 import 'package:signalr_netcore/signalr_client.dart';
 import 'package:connectivity_plus/connectivity_plus.dart'; 
 import '../config/app_config.dart';
+import '../services/folder_service.dart';
+import '../widgets/story_bar.dart';
 
 class ChatsScreen extends StatefulWidget {
-  const ChatsScreen({super.key});
+  final void Function(int chatId, String chatName, int? otherUserId)? onChatSelected;
+  const ChatsScreen({super.key, this.onChatSelected});
 
   @override
   State<ChatsScreen> createState() => _ChatsScreenState();
@@ -23,6 +29,7 @@ class ChatsScreen extends StatefulWidget {
 class _ChatsScreenState extends State<ChatsScreen> {
   final ChatService _chatService = ChatService();
   final AuthService _authService = AuthService();
+  final FolderService _folderService = FolderService();
   final TextEditingController _searchController = TextEditingController();
 
   int? currentUserId;
@@ -30,6 +37,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
   
   List<dynamic> _allChats = [];
   List<dynamic> _filteredChats = [];
+  List<dynamic> _folders = [];
+  int? _selectedFolderId;
   bool _isLoading = true;
   bool _isOffline = false; 
   bool _isUpdating = false;
@@ -82,6 +91,17 @@ class _ChatsScreenState extends State<ChatsScreen> {
     
     setState(() {
       _filteredChats = _allChats.where((chat) {
+        final chatId = chat['chatID'] ?? chat['chatId'] ?? chat['ChatID'];
+        
+        // 📁 ФИЛЬТРАЦИЯ ПО ПАПКАМ
+        if (_selectedFolderId != null) {
+          final currentFolder = _folders.firstWhere((f) => f['folderID'] == _selectedFolderId, orElse: () => null);
+          if (currentFolder != null) {
+            final List<dynamic> folderChatIds = currentFolder['chatIds'] ?? [];
+            if (!folderChatIds.contains(chatId)) return false;
+          }
+        }
+
         final name = (chat['chatName'] ?? chat['ChatName'] ?? '').toString().toLowerCase();
         
         bool isGroup = chat['isGroup'] == true || chat['IsGroup'] == true || 
@@ -146,11 +166,13 @@ class _ChatsScreenState extends State<ChatsScreen> {
     try {
       final profile = await _chatService.getUserProfile(currentUserId!);
       final chats = await _chatService.fetchChats(currentUserId!);
+      final folders = await _folderService.getFolders();
       
       if (mounted) {
         setState(() {
           currentUserProfile = profile;
           _allChats = chats;
+          _folders = folders;
           _onSearchChanged(); 
           _isUpdating = false;
           _isLoading = false;
@@ -171,7 +193,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         .withUrl(
           AppConfig.hubUrl,
           options: HttpConnectionOptions(
-            accessTokenFactory: () async => token,
+            accessTokenFactory: () async => token ?? '',
           ),
         )
         .build();
@@ -229,6 +251,46 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
     return Scaffold(
       backgroundColor: bgColor,
+      drawer: Drawer(
+        backgroundColor: bgColor,
+        child: Column(
+          children: [
+            UserAccountsDrawerHeader(
+              decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1)),
+              accountName: Text(myDisplayName, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+              accountEmail: const Text("VEINPulse Pro User", style: TextStyle(color: Colors.blue)),
+              currentAccountPicture: CircleAvatar(
+                backgroundColor: isDark ? Colors.grey[800] : Colors.black,
+                backgroundImage: myAvatarUrl != null ? CachedNetworkImageProvider(myAvatarUrl) : null,
+                child: myAvatarUrl == null ? Text(myInitial, style: const TextStyle(color: Colors.white, fontSize: 24)) : null,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.bookmark, color: Colors.blue),
+              title: Text("Избранное", style: TextStyle(color: textColor)),
+              onTap: () async {
+                Navigator.pop(context);
+                int? savedChatId = await _chatService.getOrCreateSavedMessages(currentUserId!);
+                if (savedChatId != null) Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId)));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.campaign, color: Colors.orange),
+              title: Text("Создать канал", style: TextStyle(color: textColor)),
+              onTap: () {
+                Navigator.pop(context);
+                // Навигация на создание канала (создадим позже или используем существующий экран с флагом)
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.settings, color: Colors.grey),
+              title: Text("Настройки", style: TextStyle(color: textColor)),
+              onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => SettingsScreen(currentUserId: currentUserId ?? 0, userProfile: currentUserProfile ?? {}))); },
+            ),
+          ],
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -237,14 +299,19 @@ class _ChatsScreenState extends State<ChatsScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  GestureDetector(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen())),
-                    child: CircleAvatar(
-                      radius: 20, 
-                      backgroundColor: isDark ? Colors.grey[800] : Colors.black,
-                      backgroundImage: myAvatarUrl != null ? CachedNetworkImageProvider(myAvatarUrl) : null,
-                      child: myAvatarUrl == null ? Text(myInitial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)) : null,
-                    ),
+                  Row(
+                    children: [
+                      Builder(builder: (context) => IconButton(icon: Icon(Icons.menu, color: textColor), onPressed: () => Scaffold.of(context).openDrawer())),
+                      GestureDetector(
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen())),
+                        child: CircleAvatar(
+                          radius: 18, 
+                          backgroundColor: isDark ? Colors.grey[800] : Colors.black,
+                          backgroundImage: myAvatarUrl != null ? CachedNetworkImageProvider(myAvatarUrl) : null,
+                          child: myAvatarUrl == null ? Text(myInitial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)) : null,
+                        ),
+                      ),
+                    ],
                   ),
                   Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -283,6 +350,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         },
                       ),
                       IconButton(
+                        icon: Icon(Icons.search, color: textColor),
+                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => SearchMessagesScreen(currentUserId: currentUserId!))),
+                      ),
+                      IconButton(
                         icon: Icon(Icons.edit_square, color: textColor),
                         onPressed: () async {
                           await Navigator.push(context, MaterialPageRoute(builder: (context) => NewMessageScreen(currentUserId: currentUserId!)));
@@ -294,7 +365,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 ],
               ),
             ),
-            
+            // 🎞️ ПАНЕЛЬ СТОРИС (ПУЛЬС)
+            const StoryBar(),
+
+            // 🔍 СТРОКА ПОИСКА ЧАТОВ
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Container(
@@ -327,6 +401,39 @@ class _ChatsScreenState extends State<ChatsScreen> {
                     ),
                   );
                 },
+              ),
+            ),
+
+            // 📁 ПАПКИ
+            if (_folders.isNotEmpty)
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  ChoiceChip(
+                    label: const Text("Все чаты"),
+                    selected: _selectedFolderId == null,
+                    onSelected: (_) => setState(() { _selectedFolderId = null; _onSearchChanged(); }),
+                  ),
+                  const SizedBox(width: 8),
+                  ..._folders.map((f) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(f['folderName']),
+                      selected: _selectedFolderId == f['folderID'],
+                      onSelected: (_) => setState(() { _selectedFolderId = f['folderID']; _onSearchChanged(); }),
+                    ),
+                  )).toList(),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, size: 20),
+                    onPressed: () async {
+                      final res = await Navigator.push(context, MaterialPageRoute(builder: (context) => CreateFolderScreen(currentUserId: currentUserId!)));
+                      if (res == true) _refreshChats();
+                    },
+                  ),
+                ],
               ),
             ),
 
@@ -415,8 +522,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
                               child: ListTile(
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                                 onTap: () async {
-                                  await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: chatId, chatName: chatName, currentUserId: currentUserId!, otherUserId: otherUserId)));
-                                  _refreshChats(); 
+                                  if (widget.onChatSelected != null) {
+                                    widget.onChatSelected!(chatId, finalChatName, otherUserId);
+                                  } else {
+                                    await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: chatId, chatName: finalChatName, currentUserId: currentUserId!, otherUserId: otherUserId)));
+                                    _refreshChats(); 
+                                  }
                                 },
                                 leading: Stack(
                                   clipBehavior: Clip.none,

@@ -81,17 +81,81 @@ class ChatService {
     return null;
   }
 
-  // 3. Отправить сообщение
-  Future<void> sendMessage(int chatId, int userId, String text, {int? replyToMessageId, String? mediaUrl, String messageType = 'Text'}) async {
+  // 3. Отправить сообщение (С ПОДДЕРЖКОЙ ОФЛАЙНА)
+  Future<void> sendMessage(int chatId, int userId, String text, {int? replyToMessageId, String? mediaUrl, String messageType = 'Text', DateTime? scheduledAt, bool isViewOnce = false}) async {
+    final body = {
+      "content": text, 
+      "replyToMessageId": replyToMessageId, 
+      "mediaUrl": mediaUrl, 
+      "messageType": messageType,
+      "scheduledAt": scheduledAt?.toIso8601String(),
+      "isViewOnce": isViewOnce
+    };
+
     try {
       final headers = await _getHeaders();
       final response = await http.post(
         Uri.parse('$baseUrl/chats/$chatId/messages'),
         headers: headers,
-        body: jsonEncode({"content": text, "replyToMessageId": replyToMessageId, "mediaUrl": mediaUrl, "messageType": messageType }),
-      );
-      if (response.statusCode != 200) throw Exception("Ошибка отправки: ${response.body}");
-    } catch (e) { print("Ошибка: $e"); }
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 401) throw Exception("UNAUTHORIZED");
+      if (response.statusCode != 200) throw Exception("SERVER_ERROR");
+    } catch (e) { 
+      print("Сообщение не отправлено. Сохраняем в очередь 💾: $e");
+      // Сохраняем в очередь для повторной отправки
+      final box = await Hive.openBox('pending_messages');
+      await box.add({
+        "chatId": chatId,
+        "userId": userId,
+        "data": body,
+        "timestamp": DateTime.now().millisecondsSinceEpoch
+      });
+      if (e.toString().contains("UNAUTHORIZED")) throw Exception("SESSION_EXPIRED");
+    }
+  }
+
+  // СИНХРОНИЗАЦИЯ ОФЛАЙН СООБЩЕНИЙ
+  Future<void> syncPendingMessages() async {
+    final box = await Hive.openBox('pending_messages');
+    if (box.isEmpty) return;
+
+    final List<dynamic> keys = box.keys.toList();
+    for (var key in keys) {
+      final msg = box.get(key);
+      try {
+        final headers = await _getHeaders();
+        final response = await http.post(
+          Uri.parse('$baseUrl/chats/${msg['chatId']}/messages'),
+          headers: headers,
+          body: jsonEncode(msg['data']),
+        ).timeout(const Duration(seconds: 5));
+
+        if (response.statusCode == 200) {
+          await box.delete(key);
+          print("Офлайн сообщение успешно отправлено! ✅");
+        }
+      } catch (e) {
+        break; // Если всё еще нет сети, прерываем цикл
+      }
+    }
+  }
+
+  Future<void> markViewOnceAsViewed(int messageId) async {
+    try {
+      final headers = await _getHeaders();
+      await http.post(Uri.parse('$baseUrl/messages/$messageId/view-once'), headers: headers);
+    } catch (e) { print("Ошибка markViewOnceAsViewed: $e"); }
+  }
+
+  Future<String?> translateMessage(int messageId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(Uri.parse('$baseUrl/messages/$messageId/translate'), headers: headers);
+      if (response.statusCode == 200) return jsonDecode(response.body)['translatedText'];
+    } catch (e) { print("Ошибка перевода: $e"); }
+    return null;
   }
 
   Future<String?> uploadMedia(File file) async {
@@ -248,5 +312,28 @@ class ChatService {
       final response = await http.delete(Uri.parse('$baseUrl/chats/$chatId/participants/$userId'), headers: headers);
       if (response.statusCode != 200) throw Exception("Ошибка исключения участника");
     } catch (e) { print("Ошибка: $e"); }
+  }
+
+  // 18. ТУГГЛ РЕАКЦИИ
+  Future<void> toggleReaction(int messageId, String emoji) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(
+        Uri.parse('$baseUrl/messages/$messageId/reactions'),
+        headers: headers,
+        body: jsonEncode(emoji),
+      );
+      if (response.statusCode != 200) throw Exception("Ошибка реакции");
+    } catch (e) { print("Ошибка реакции: $e"); }
+  }
+
+  // 19. ГЛОБАЛЬНЫЙ ПОИСК СООБЩЕНИЙ
+  Future<List<dynamic>> searchMessages(String query) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('$baseUrl/messages/search?query=$query'), headers: headers);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) { print("Ошибка поиска: $e"); }
+    return [];
   }
 }

@@ -31,7 +31,28 @@ CREATE TABLE Users (
     IsDarkMode BIT NOT NULL DEFAULT 0,
     IsOnline BIT NOT NULL DEFAULT 0,
     LastActive DATETIME2 NULL,
-    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    FcmToken NVARCHAR(MAX) NULL -- 🔔 Для Push-уведомлений
+);
+
+-- =============================================
+-- ТАБЛИЦЫ ПАПОК (Для группировки чатов)
+-- =============================================
+CREATE TABLE ChatFolders (
+    FolderID INT PRIMARY KEY IDENTITY(1,1),
+    UserID INT NOT NULL,
+    FolderName NVARCHAR(50) NOT NULL,
+    IconName NVARCHAR(50) DEFAULT 'folder',
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    CONSTRAINT FK_Folders_Users FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+);
+
+CREATE TABLE ChatFolderItems (
+    FolderID INT NOT NULL,
+    ChatID INT NOT NULL,
+    PRIMARY KEY (FolderID, ChatID),
+    CONSTRAINT FK_FolderItems_Folders FOREIGN KEY (FolderID) REFERENCES ChatFolders(FolderID) ON DELETE CASCADE,
+    CONSTRAINT FK_FolderItems_Chats FOREIGN KEY (ChatID) REFERENCES Chats(ChatID) ON DELETE CASCADE
 );
 
 -- =============================================
@@ -42,6 +63,8 @@ CREATE TABLE Chats (
     GroupName NVARCHAR(100) NULL,
     AvatarUrl NVARCHAR(MAX) NULL,
     IsGroup BIT NOT NULL DEFAULT 0,
+    IsChannel BIT NOT NULL DEFAULT 0, -- 📢 Новое: Флаг канала
+    CreatorUserId INT NULL, -- 👑 Создатель канала/группы
     CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
 );
 
@@ -67,16 +90,49 @@ CREATE TABLE Messages (
     ChatID INT NOT NULL,
     SenderUserID INT NOT NULL,
     ContentText NVARCHAR(MAX) NULL,
+    TranslatedText NVARCHAR(MAX) NULL, -- 🌍 Новое: Перевод сообщения
     MessageType NVARCHAR(50) NOT NULL DEFAULT 'Text',
     SentAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    ScheduledAt DATETIME2 NULL, -- 🕒 Новое: Отложенная отправка
     IsRead BIT NOT NULL DEFAULT 0,
+    ReadAt DATETIME2 NULL,
+    IsDelivered BIT NOT NULL DEFAULT 0,
+    DeliveredAt DATETIME2 NULL,
+    IsViewOnce BIT NOT NULL DEFAULT 0, -- 👻 Новое: Исчезающее медиа
+    ViewedAt DATETIME2 NULL, -- 🕒 Новое: Когда исчезающее медиа было просмотрено
     IsDeleted BIT NOT NULL DEFAULT 0,
     IsEdited BIT NOT NULL DEFAULT 0,
     ReplyToMessageId BIGINT NULL,
-    MediaUrl NVARCHAR(MAX) NULL, -- В БД оставляем имя как в [Column("MediaUrl")]
+    MediaUrl NVARCHAR(MAX) NULL,
     IsPinned BIT NOT NULL DEFAULT 0,
     FOREIGN KEY (ChatID) REFERENCES Chats(ChatID) ON DELETE CASCADE,
     FOREIGN KEY (SenderUserID) REFERENCES Users(UserID)
+);
+
+-- =============================================
+-- ТАБЛИЦА СТОРИС (Stories)
+-- =============================================
+CREATE TABLE Stories (
+    StoryID INT PRIMARY KEY IDENTITY(1,1),
+    UserID INT NOT NULL,
+    MediaUrl NVARCHAR(MAX) NOT NULL,
+    Caption NVARCHAR(200) NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    ExpiresAt DATETIME2 NOT NULL, -- Обычно CreatedAt + 24 часа
+    IsDeleted BIT NOT NULL DEFAULT 0,
+    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+);
+
+-- =============================================
+-- ТАБЛИЦА ТЕМ ПОЛЬЗОВАТЕЛЯ (Themes)
+-- =============================================
+CREATE TABLE UserThemes (
+    UserID INT PRIMARY KEY,
+    PrimaryColor NVARCHAR(20) DEFAULT '#007AFF',
+    BgImageUrl NVARCHAR(MAX) NULL,
+    BubbleOpacity FLOAT DEFAULT 0.9,
+    IsGlassmorphism BIT DEFAULT 1,
+    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
 );
 GO
 
@@ -112,6 +168,20 @@ VALUES (1, 1, 'Text', 'Важное: завтра созвон в 10:00', 1, GET
 -- Ответ на сообщение (ReplyToMessageId ссылается на MessageID = 1)
 INSERT INTO Messages (ChatID, SenderUserID, MessageType, ContentText, ReplyToMessageId, SentAt)
 VALUES (1, 2, 'Text', 'Да, база — это база.', 1, GETUTCDATE());
+
+-- =======================================================
+-- РЕАКЦИИ НА СООБЩЕНИЯ
+-- =======================================================
+CREATE TABLE MessageReactions (
+    ReactionID BIGINT PRIMARY KEY IDENTITY(1,1),
+    MessageID BIGINT NOT NULL,
+    UserID INT NOT NULL,
+    Emoji NVARCHAR(10) NOT NULL,
+    CreatedAt DATETIME DEFAULT GETUTCDATE(),
+    CONSTRAINT FK_Reactions_Messages FOREIGN KEY (MessageID) REFERENCES Messages(MessageID) ON DELETE CASCADE,
+    CONSTRAINT FK_Reactions_Users FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
+CREATE INDEX IX_MessageReactions_MessageID ON MessageReactions(MessageID);
 
 -- =======================================================
 -- ИНДЕКСЫ ДЛЯ УСКОРЕНИЯ ПОИСКА

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // 👈 Добавили для чтения памяти
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'dart:ui';
 
 // Твои экраны
@@ -15,6 +16,12 @@ final ValueNotifier<bool> themeNotifier = ValueNotifier(false);
 void main() async {
   // Обязательная строчка для работы с памятью до запуска UI
   WidgetsFlutterBinding.ensureInitialized();
+  
+  try {
+    await Firebase.initializeApp(); // 🔔 Инициализация Firebase
+  } catch (e) {
+    print("Firebase не инициализирован. Проверьте google-services.json");
+  }
   
   // 1. Инициализируем локальную базу данных (Hive)
   await Hive.initFlutter();
@@ -70,17 +77,23 @@ class MessengerApp extends StatelessWidget {
             ),
           ),
           
-          // --- ТЕМНАЯ ТЕМА ---
+          // --- ТЕМНАЯ ТЕМА (AMOLED BLACK) ---
           darkTheme: ThemeData(
-            scaffoldBackgroundColor: const Color(0xFF121212), 
+            scaffoldBackgroundColor: const Color(0xFF000000), 
             primarySwatch: Colors.blue,
             fontFamily: 'SF Pro',
             brightness: Brightness.dark,
             appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFF121212),
+              backgroundColor: Color(0xFF000000),
               foregroundColor: Colors.white,
               elevation: 0,
             ),
+            bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+              backgroundColor: Color(0xFF000000),
+              selectedItemColor: Colors.blue,
+              unselectedItemColor: Colors.grey,
+            ),
+            cardColor: const Color(0xFF1C1C1E), // Цвет для плашек/настроек
           ),
           
           themeMode: isDark ? ThemeMode.dark : ThemeMode.light,

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace WebApplication1.Models
 {
@@ -32,5 +32,6 @@ namespace WebApplication1.Models
         public DateTime? LastActive { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public string? FcmToken { get; set; } // 🔔 Для Push-уведомлений
     }
 }

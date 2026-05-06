@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'privacy_screen.dart';
+import 'theme_settings_screen.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../services/chat_service.dart'; // Для отправки на бэкенд
 import '../main.dart'; // Подключаем наш themeNotifier
@@ -117,7 +118,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           
           // Блок 1
           _buildSettingsBlock([
-            _buildSettingsItem(icon: Icons.notifications, color: Colors.redAccent, title: "Уведомления и звуки", onTap: () {}),
+            _buildSettingsItem(icon: Icons.notifications, color: Colors.redAccent, title: "Уведомления и звуки", onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Настройки уведомлений скоро будут доступны! 🔔")));
+            }),
             _buildSettingsItem(
               icon: Icons.lock, color: Colors.grey, title: "Конфиденциальность", 
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => PrivacyScreen(currentUserId: widget.currentUserId, userProfile: widget.userProfile))),
@@ -130,7 +133,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Блок 2
           const Padding(padding: EdgeInsets.only(left: 16, bottom: 8), child: Text("ОФОРМЛЕНИЕ", style: TextStyle(color: Colors.grey, fontSize: 13))),
           _buildSettingsBlock([
-            _buildSettingsItem(icon: Icons.color_lens, color: Colors.blue, title: "Тема и цвета", onTap: () {}), 
+            _buildSettingsItem(
+              icon: Icons.color_lens, color: Colors.blue, title: "Тема и цвета", 
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ThemeSettingsScreen(currentUserId: widget.currentUserId))),
+            ), 
             
             // 👇 ПОДКЛЮЧАЕМ ТУМБЛЕР 👇
             _buildSettingsItem(
