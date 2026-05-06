@@ -1,0 +1,42 @@
+name: flutter_application_1
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  http: ^1.2.0
+  shared_preferences: ^2.2.2
+  intl: ^0.20.2
+  signalr_netcore: ^1.4.4
+  image_picker: ^1.2.1
+  record: ^4.4.4
+  audioplayers: ^5.2.1    
+  camera: ^0.10.5+9       
+  video_player: ^2.8.2    
+  path_provider: ^2.1.2   
+  permission_handler: ^11.3.0 
+  emoji_picker_flutter: ^4.4.0
+  grouped_list: ^6.0.0
+  cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.1
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  file_picker: ^8.1.2
+  marquee: ^2.2.3
+  connectivity_plus: ^7.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
