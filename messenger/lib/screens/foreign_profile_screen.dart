@@ -5,6 +5,7 @@ import 'chat_detail_screen.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:marquee/marquee.dart';
+import '../config/app_config.dart';
 
 class ForeignProfileScreen extends StatefulWidget {
   final int userId;
@@ -111,7 +112,8 @@ class _ForeignProfileScreenState extends State<ForeignProfileScreen> {
                   String cleanUrl = musicUrl.split('?').first;
                   if (!cleanUrl.startsWith('http')) {
                     cleanUrl = cleanUrl.startsWith('/') ? cleanUrl.substring(1) : cleanUrl;
-                    cleanUrl = "http://192.168.0.105:5121/$cleanUrl"; 
+                    final base = AppConfig.baseUrl.replaceAll('/api', '');
+                    cleanUrl = "$base/$cleanUrl"; 
                   }
                   await _audioPlayer.play(UrlSource(cleanUrl));
                 } catch (e) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ошибка воспроизведения 🚫"), backgroundColor: Colors.red)); }

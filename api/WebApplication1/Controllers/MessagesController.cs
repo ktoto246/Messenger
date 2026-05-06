@@ -73,7 +73,8 @@ namespace WebApplication1.Controllers
             if (!string.IsNullOrEmpty(message.ImageUrl))
             {
                 try {
-                    var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", message.ImageUrl.TrimStart('/'));
+                    var fileName = Path.GetFileName(message.ImageUrl);
+                    var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", fileName);
                     if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath);
                 } catch { /* Игнорируем ошибки удаления файла */ }
             }

@@ -218,7 +218,27 @@ class _ChatsScreenState extends State<ChatsScreen> {
       }
     });
 
-    _hubConnection?.on("ReceiveMessage", (args) { _refreshChats(); });
+    _hubConnection?.on("ReceiveMessage", (args) {
+      if (args != null && args.isNotEmpty) {
+        final newMsg = args[0] as Map<String, dynamic>;
+        final chatId = newMsg['chatID'] ?? newMsg['ChatID'] ?? widget.chatId; // chatId может не быть в payload, но мы знаем контекст
+
+        if (mounted) setState(() {
+          // Ищем чат в списке
+          final index = _chats.indexWhere((c) => (c['chatID'] ?? c['ChatID']) == chatId);
+          if (index != -1) {
+            final chat = _chats.removeAt(index);
+            chat['lastMessage'] = newMsg['contentText'] ?? newMsg['ContentText'] ?? "Медиафайл";
+            chat['lastMessageTime'] = newMsg['sentAt'] ?? newMsg['SentAt'];
+            _chats.insert(0, chat); // Перемещаем вверх
+          } else {
+            _refreshChats(); // Если чата нет в списке (новый чат), тогда рефрешим
+          }
+        });
+      } else {
+        _refreshChats();
+      }
+    });
 
     try {
       await _hubConnection?.start();

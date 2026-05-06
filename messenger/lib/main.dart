@@ -1,5 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // 👈 Добавили для чтения памяти
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'dart:ui';
@@ -32,9 +31,9 @@ void main() async {
   var settingsBox = await Hive.openBox('settings_box');
   themeNotifier.value = settingsBox.get('isDarkMode', defaultValue: false);
 
-  // 3. 🪄 МАГИЯ АВТОВХОДА: Проверяем, есть ли сохраненный ID пользователя
-  final prefs = await SharedPreferences.getInstance();
-  final int? savedUserId = prefs.getInt('userId');
+  // 3. 🪄 МАГИЯ АВТОВХОДА: Проверяем, есть ли сохраненный ID пользователя (Через SecureStorage)
+  const storage = FlutterSecureStorage();
+  final String? savedUserId = await storage.read(key: 'userId');
   final bool isLoggedIn = savedUserId != null; // Если ID есть, значит авторизован!
 
   FlutterError.onError = (FlutterErrorDetails details) {

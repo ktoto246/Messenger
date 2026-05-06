@@ -327,6 +327,22 @@ class ChatService {
     } catch (e) { print("Ошибка реакции: $e"); }
   }
 
+  // 2. Получить историю сообщений (С ПАГИНАЦИЕЙ ПО ID)
+  Future<List<dynamic>> fetchMessages(int chatId, {int? lastMessageId, int take = 30}) async {
+    try {
+      final headers = await _getHeaders();
+      final url = lastMessageId != null 
+          ? '$baseUrl/chats/$chatId/messages?lastMessageId=$lastMessageId&take=$take'
+          : '$baseUrl/chats/$chatId/messages?take=$take';
+
+      final response = await http.get(Uri.parse(url), headers: headers);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) { print("Ошибка загрузки сообщений: $e"); }
+    return [];
+  }
+
   // 19. ГЛОБАЛЬНЫЙ ПОИСК СООБЩЕНИЙ
   Future<List<dynamic>> searchMessages(String query) async {
     try {

@@ -246,8 +246,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       }
     });
     _hubConnection?.on("ReceiveMessage", (args) {
-      if (_showScrollToBottom) setState(() => _unreadCountWhileScrolled++);
-      _loadMessages(isRefresh: true);
+      if (args != null && args.isNotEmpty) {
+        final newMsg = args[0] as Map<String, dynamic>;
+        
+        // 🛡️ Проверка: если сообщения с таким ID еще нет в списке — добавляем
+        final msgId = newMsg['messageID'] ?? newMsg['MessageID'];
+        bool exists = _messages.any((m) => (m['messageID'] ?? m['MessageID']) == msgId);
+        
+        if (!exists) {
+           if (mounted) setState(() {
+             _messages.insert(0, newMsg); // Добавляем в начало (так как список реверсивный)
+             if (_showScrollToBottom) _unreadCountWhileScrolled++;
+           });
+        }
+      } else {
+        // Fallback если сервер прислал пустой ReceiveMessage
+        _loadMessages(isRefresh: true);
+      }
     });
     _hubConnection?.on("UpdateReaction", (args) {
       _loadMessages(isRefresh: true);
@@ -300,11 +315,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _loadMoreMessages() async {
-    if (_isLoadingMore || !_hasMore) return; 
+    if (_isLoadingMore || !_hasMore || _messages.isEmpty) return; 
     setState(() => _isLoadingMore = true);
     try {
-      final newMessages = await _chatService.fetchMessages(widget.chatId, skip: _messages.length, take: 30);
-      if (mounted) setState(() { if (newMessages.isEmpty) _hasMore = false; else _messages.addAll(newMessages); _isLoadingMore = false; });
+      // Берем ID самого старого сообщения в списке
+      final lastMsg = _messages.last;
+      final lastId = lastMsg['messageID'] ?? lastMsg['MessageID'];
+      
+      final newMessages = await _chatService.fetchMessages(widget.chatId, lastMessageId: lastId, take: 30);
+      if (mounted) setState(() { 
+        if (newMessages.isEmpty) {
+          _hasMore = false;
+        } else {
+          _messages.addAll(newMessages); 
+        }
+        _isLoadingMore = false; 
+      });
     } catch (e) { if (mounted) setState(() => _isLoadingMore = false); }
   }
 

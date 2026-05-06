@@ -20,12 +20,14 @@ namespace WebApplication1.Controllers
         private readonly AppDbContext _context;
         private readonly PushNotificationService _pushService;
         private readonly Microsoft.AspNetCore.SignalR.IHubContext<WebApplication1.Hubs.ChatHub> _hubContext;
+        private readonly IServiceScopeFactory _scopeFactory;
 
-        public ChatsController(AppDbContext context, PushNotificationService pushService, Microsoft.AspNetCore.SignalR.IHubContext<WebApplication1.Hubs.ChatHub> hubContext)
+        public ChatsController(AppDbContext context, PushNotificationService pushService, Microsoft.AspNetCore.SignalR.IHubContext<WebApplication1.Hubs.ChatHub> hubContext, IServiceScopeFactory scopeFactory)
         {
             _context = context;
             _pushService = pushService;
             _hubContext = hubContext;
+            _scopeFactory = scopeFactory;
         }
 
         // Хелпер для получения ID текущего пользователя из JWT
@@ -95,18 +97,24 @@ namespace WebApplication1.Controllers
         // 2. ИСТОРИЯ СООБЩЕНИЙ В ЧАТЕ
         // ==========================================
         [HttpGet("{chatId}/messages")]
-        public async Task<IActionResult> GetMessages(int chatId, [FromQuery] int skip = 0, [FromQuery] int take = 30)
+        public async Task<IActionResult> GetMessages(int chatId, [FromQuery] long? lastMessageId = null, [FromQuery] int take = 30)
         {
             // 🛡️ Проверка: является ли пользователь участником этого чата
             var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
             if (!isParticipant) return Forbid();
 
-            var rawMessages = await _context.Messages
-                .Where(m => m.ChatID == chatId && (m.ScheduledAt == null || m.ScheduledAt <= DateTime.UtcNow))
-                .OrderByDescending(m => m.SentAt)
-                .Skip(skip)
+            var query = _context.Messages
+                .Where(m => m.ChatID == chatId && (m.ScheduledAt == null || m.ScheduledAt <= DateTime.UtcNow));
+
+            // 🛡️ Cursor-based pagination (пагинация по ID)
+            if (lastMessageId != null) {
+                query = query.Where(m => m.MessageID < lastMessageId);
+            }
+
+            var rawMessages = await query
+                .OrderByDescending(m => m.MessageID) // По ID надежнее чем по дате
                 .Take(take)
-                .Include(m => m.SenderUser) // 🛡️ Загружаем отправителя
+                .Include(m => m.SenderUser)
                 .ToListAsync();
 
             var messages = rawMessages.Select(m => {
@@ -139,10 +147,11 @@ namespace WebApplication1.Controllers
                     Reactions = _context.MessageReactions
                         .Where(r => r.MessageID == m.MessageID)
                         .GroupBy(r => r.Emoji)
-                        .Select(g => new { Emoji = g.Key, Count = g.Count(), UserReacted = g.Any(r => r.UserID = CurrentUserId) })
+                        .Select(g => new { Emoji = g.Key, Count = g.Count(), UserReacted = g.Any(r => r.UserID == CurrentUserId) })
                         .ToList(),
                     m.IsViewOnce,
                     IsExpired = m.IsViewOnce && m.ViewedAt != null,
+                    ImageUrl = (m.IsViewOnce && m.ViewedAt != null) ? null : m.ImageUrl, // 🛡️ Защита: не отдаем URL если просмотрено
                     m.TranslatedText
                 };
             }).ToList();
@@ -187,31 +196,47 @@ namespace WebApplication1.Controllers
             await _context.SaveChangesAsync();
 
             // ⚡️ РЕАЛЬНОЕ ВРЕМЯ (SignalR): Уведомляем участников чата
-            await _hubContext.Clients.Group(chatId.ToString()).SendAsync("ReceiveMessage");
+            // Передаем весь объект сообщения, чтобы клиенты не делали лишних запросов
+            await _hubContext.Clients.Group(chatId.ToString()).SendAsync("ReceiveMessage", new {
+                newMessage.MessageID,
+                newMessage.SenderUserID,
+                newMessage.ContentText,
+                newMessage.SentAt,
+                newMessage.ImageUrl,
+                newMessage.MessageType,
+                newMessage.ReplyToMessageId,
+                SenderName = (await _context.Users.FindAsync(CurrentUserId))?.DisplayName,
+                newMessage.IsViewOnce
+            });
 
-            // 🔔 ОТПРАВКА PUSH-УВЕДОМЛЕНИЙ
+            // 🔔 ОТПРАВКА PUSH-УВЕДОМЛЕНИЙ (БЕЗОПАСНО В ФОНЕ)
             _ = Task.Run(async () => {
-                try {
-                    var participants = await _context.ChatParticipants
-                        .Where(cp => cp.ChatID == chatId && cp.UserID != CurrentUserId)
-                        .Include(cp => cp.User)
-                        .ToListAsync();
+                using (var scope = _scopeFactory.CreateScope())
+                {
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                    var scopedPushService = scope.ServiceProvider.GetRequiredService<PushNotificationService>();
 
-                    var tokens = participants
-                        .Where(p => !string.IsNullOrEmpty(p.User.FcmToken))
-                        .Select(p => p.User.FcmToken)
-                        .ToList();
+                    try {
+                        var participants = await scopedContext.ChatParticipants
+                            .Where(cp => cp.ChatID == chatId && cp.UserID != CurrentUserId)
+                            .Include(cp => cp.User)
+                            .ToListAsync();
 
-                    if (tokens.Any()) {
-                        // 🔔 РЕАЛЬНАЯ ОТПРАВКА ЧЕРЕЗ СЕРВИС
-                        var sender = await _context.Users.FindAsync(CurrentUserId);
-                        var chat = await _context.Chats.FindAsync(chatId);
-                        string title = chat?.IsGroup == true ? (chat.GroupName ?? "Группа") : (sender?.DisplayName ?? "Новое сообщение");
-                        string body = chat?.IsGroup == true ? $"{sender?.DisplayName}: {newMessage.ContentText}" : (newMessage.ContentText ?? "Медиафайл");
-                        
-                        await _pushService.SendNotificationAsync(tokens, title, body, newMessage.ImageUrl);
-                    }
-                } catch { /* Игнорируем ошибки пушей */ }
+                        var tokens = participants
+                            .Where(p => !string.IsNullOrEmpty(p.User.FcmToken))
+                            .Select(p => p.User.FcmToken)
+                            .ToList();
+
+                        if (tokens.Any()) {
+                            var sender = await scopedContext.Users.FindAsync(CurrentUserId);
+                            var chatInfo = await scopedContext.Chats.FindAsync(chatId);
+                            string title = chatInfo?.IsGroup == true ? (chatInfo.GroupName ?? "Группа") : (sender?.DisplayName ?? "Новое сообщение");
+                            string body = chatInfo?.IsGroup == true ? $"{sender?.DisplayName}: {newMessage.ContentText}" : (newMessage.ContentText ?? "Медиафайл");
+                            
+                            await scopedPushService.SendNotificationAsync(tokens, title, body, newMessage.ImageUrl);
+                        }
+                    } catch { /* Игнорируем ошибки пушей */ }
+                }
             });
 
             return Ok(newMessage);
@@ -281,10 +306,15 @@ namespace WebApplication1.Controllers
             // 🛡️ Ограничение размера (50MB)
             if (file.Length > 50 * 1024 * 1024) return BadRequest("Файл слишком большой");
 
-            // 🛡️ Белый список расширений
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".mp4", ".mp3", ".wav" };
+            // 🛡️ Белый список расширений и проверка контента
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".mp4", ".mp3", ".wav", ".m4a" };
             var extension = Path.GetExtension(file.FileName).ToLower();
             if (!allowedExtensions.Contains(extension)) return BadRequest("Недопустимый тип файла");
+
+            // 🛡️ Базовая проверка по ContentType (защита от переименованных исполняемых файлов)
+            if (!file.ContentType.StartsWith("image/") && !file.ContentType.StartsWith("video/") && !file.ContentType.StartsWith("audio/")) {
+                 return BadRequest("Контент файла не соответствует медиа-типу");
+            }
 
             var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
             if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);

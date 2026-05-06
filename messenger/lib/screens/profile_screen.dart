@@ -7,6 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'package:marquee/marquee.dart';
+import '../config/app_config.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -135,7 +136,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   String cleanUrl = _musicUrl!.split('?').first;
                   if (!cleanUrl.startsWith('http')) {
                     cleanUrl = cleanUrl.startsWith('/') ? cleanUrl.substring(1) : cleanUrl;
-                    cleanUrl = "http://192.168.0.105:5121/$cleanUrl"; 
+                    final base = AppConfig.baseUrl.replaceAll('/api', '');
+                    cleanUrl = "$base/$cleanUrl"; 
                   }
                   await _audioPlayer.play(UrlSource(cleanUrl));
                 } catch (e) {
