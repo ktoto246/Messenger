@@ -112,7 +112,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.search_off_rounded, size: 70, color: Colors.grey.withOpacity(0.4)),
+                              Icon(Icons.search_off_rounded, size: 70, color: Colors.grey.withValues(alpha: 0.4)),
                               const SizedBox(height: 16),
                               Text("Никого не найдено", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                               const SizedBox(height: 8),
@@ -152,7 +152,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
         } else if (diff.inMinutes == 0) {
            statusText = 'now'; statusColor = const Color(0xFFC7F0BB);
         }
-      } catch (e) {}
+      } catch (e) {
+      debugPrint("Error loading contacts: $e");
+    }
     }
 
     return InkWell(

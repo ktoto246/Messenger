@@ -68,11 +68,13 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           ),
           (route) => route.isFirst, 
         );
-      } else {
+      } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ошибка создания группы на сервере")));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ошибка сети: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ошибка сети: $e")));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -146,8 +148,11 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                              return;
                           }
                           setState(() {
-                            if (isSelected) _selectedUserIds.remove(userId);
-                            else _selectedUserIds.add(userId);
+                            if (isSelected) {
+                              _selectedUserIds.remove(userId);
+                            } else {
+                              _selectedUserIds.add(userId);
+                            }
                           });
                         },
                         leading: Stack(

@@ -3,8 +3,13 @@ import 'package:hive/hive.dart';
 import 'privacy_screen.dart';
 import 'theme_settings_screen.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import '../services/chat_service.dart'; // Для отправки на бэкенд
-import '../main.dart'; // Подключаем наш themeNotifier
+import '../services/chat_service.dart';
+import '../services/notification_service.dart';
+import '../main.dart';
+import 'active_sessions_screen.dart';
+import 'business_profile_screen.dart';
+import 'missed_calls_screen.dart';
+import 'nearby_people_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final int currentUserId;
@@ -19,12 +24,16 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final ChatService _chatService = ChatService();
   late bool isDarkMode;
+  bool _compactMode = false;
+  bool _nightScheduleEnabled = false;
 
   @override
   void initState() {
     super.initState();
-    // Устанавливаем положение тумблера при входе
     isDarkMode = widget.userProfile['isDarkMode'] ?? themeNotifier.value;
+    // Загружаем доп. настройки
+    NotificationService.isCompactMode().then((v) { if (mounted) setState(() => _compactMode = v); });
+    NotificationService.getNightModeSchedule().then((s) { if (mounted) setState(() => _nightScheduleEnabled = s['enabled'] as bool); });
   }
 
   // Функция умной очистки кэша (оставляем без изменений)
@@ -116,7 +125,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           const SizedBox(height: 20),
           
-          // Блок 1
+          // Блок 1: Основные
           _buildSettingsBlock([
             _buildSettingsItem(icon: Icons.notifications, color: Colors.redAccent, title: "Уведомления и звуки", onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Настройки уведомлений скоро будут доступны! 🔔")));
@@ -126,30 +135,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => PrivacyScreen(currentUserId: widget.currentUserId, userProfile: widget.userProfile))),
             ),
             _buildSettingsItem(icon: Icons.data_usage, color: Colors.green, title: "Данные и память", onTap: _showClearCacheDialog),
+            _buildSettingsItem(
+              icon: Icons.devices, color: Colors.indigo, title: "Активные сессии",
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActiveSessionsScreen())),
+            ),
           ], blockColor),
 
-          const SizedBox(height: 35),
+          const SizedBox(height: 25),
 
-          // Блок 2
+          // Блок 2: Оформление
           const Padding(padding: EdgeInsets.only(left: 16, bottom: 8), child: Text("ОФОРМЛЕНИЕ", style: TextStyle(color: Colors.grey, fontSize: 13))),
           _buildSettingsBlock([
             _buildSettingsItem(
               icon: Icons.color_lens, color: Colors.blue, title: "Тема и цвета", 
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ThemeSettingsScreen(currentUserId: widget.currentUserId))),
             ), 
-            
-            // 👇 ПОДКЛЮЧАЕМ ТУМБЛЕР 👇
             _buildSettingsItem(
               icon: Icons.nightlight_round, 
               color: Colors.black, 
               title: "Ночной режим", 
               trailing: Switch.adaptive(
                 value: isDarkMode, 
-                onChanged: _toggleTheme, // Вызываем функцию при клике
-                activeColor: Colors.blue,
+                onChanged: _toggleTheme,
+                activeThumbColor: Colors.white,
+                activeTrackColor: Colors.blue.withValues(alpha: 0.5),
               )
             ),
+            _buildSettingsItem(
+              icon: Icons.schedule, color: Colors.deepPurple, title: "Ночной режим по расписанию",
+              trailing: Switch.adaptive(
+                value: _nightScheduleEnabled,
+                onChanged: (v) async {
+                  setState(() => _nightScheduleEnabled = v);
+                  final schedule = await NotificationService.getNightModeSchedule();
+                  await NotificationService.setNightModeSchedule(
+                    enabled: v,
+                    fromHour: schedule['fromHour'] as int,
+                    fromMinute: schedule['fromMinute'] as int,
+                    toHour: schedule['toHour'] as int,
+                    toMinute: schedule['toMinute'] as int,
+                  );
+                  if (v) {
+                    final shouldBeDark = await NotificationService.shouldBeDarkNow();
+                    themeNotifier.value = shouldBeDark;
+                  }
+                },
+                activeColor: Colors.deepPurple,
+              ),
+            ),
+            _buildSettingsItem(
+              icon: Icons.density_small, color: Colors.teal, title: "Компактный режим",
+              trailing: Switch.adaptive(
+                value: _compactMode,
+                onChanged: (v) async {
+                  setState(() => _compactMode = v);
+                  await NotificationService.setCompactMode(v);
+                },
+                activeColor: Colors.teal,
+              ),
+            ),
           ], blockColor),
+
+          const SizedBox(height: 25),
+
+          // Блок 3: Связь
+          const Padding(padding: EdgeInsets.only(left: 16, bottom: 8), child: Text("СВЯЗЬ И ЗВОНКИ", style: TextStyle(color: Colors.grey, fontSize: 13))),
+          _buildSettingsBlock([
+            _buildSettingsItem(
+              icon: Icons.call, color: Colors.green, title: "История звонков",
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MissedCallsScreen(currentUserId: widget.currentUserId))),
+            ),
+            _buildSettingsItem(
+              icon: Icons.location_on, color: Colors.red, title: "Люди рядом",
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NearbyPeopleScreen(currentUserId: widget.currentUserId))),
+            ),
+          ], blockColor),
+
+          const SizedBox(height: 25),
+
+          // Блок 4: Бизнес
+          const Padding(padding: EdgeInsets.only(left: 16, bottom: 8), child: Text("БИЗНЕС", style: TextStyle(color: Colors.grey, fontSize: 13))),
+          _buildSettingsBlock([
+            _buildSettingsItem(
+              icon: Icons.business_center, color: Colors.orange, title: "Бизнес-профиль",
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BusinessProfileScreen(currentUserId: widget.currentUserId))),
+            ),
+          ], blockColor),
+
+          const SizedBox(height: 40),
         ],
       ),
     );

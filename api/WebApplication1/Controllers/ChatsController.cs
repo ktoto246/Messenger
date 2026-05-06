@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using WebApplication1.Data;
 using WebApplication1.DTOs;
@@ -138,7 +139,6 @@ namespace WebApplication1.Controllers
                     m.SentAt,
                     m.IsRead,
                     m.IsEdited,
-                    m.ImageUrl,
                     m.IsPinned,
                     m.MessageType,
                     m.ReplyToMessageId,

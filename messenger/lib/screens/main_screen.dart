@@ -7,7 +7,6 @@ import '../services/chat_service.dart';
 import 'call_screen.dart';
 import 'chat_detail_screen.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'dart:convert';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -49,9 +48,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver { /
   Future<void> _initCalls() async {
     await _callService.init();
     _callService.onIncomingCall = (id, offer) {
+      if (!mounted) return;
       Navigator.push(context, MaterialPageRoute(builder: (context) => CallScreen(
         targetUserId: id, 
-        targetUserName: "Incoming Call", // В идеале найти имя по ID
+        targetUserName: "Пользователь #$id", // Загружается из профиля при открытии
         isIncoming: true,
         remoteOffer: offer,
       )));
@@ -69,9 +69,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver { /
         final fcmToken = await FirebaseMessaging.instance.getToken();
         if (fcmToken != null) {
           await ChatService().updateProfile(_currentUserId!, {'fcmToken': fcmToken});
-          print("🔔 FCM Токен обновлен: $fcmToken");
+          debugPrint("🔔 FCM Токен обновлен: $fcmToken");
         }
-      } catch (e) { print("Ошибка получения FCM токена: $e"); }
+      } catch (e) { debugPrint("Ошибка получения FCM токена: $e"); }
     }
   }
 

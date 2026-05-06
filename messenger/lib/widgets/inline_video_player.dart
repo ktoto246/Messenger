@@ -15,19 +15,25 @@ class InlineVideoPlayer extends StatefulWidget {
 
 class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
   late VideoPlayerController _controller;
+  bool _isInitialized = false;
+  bool _isPlaying = false;
 
   @override
   void initState() {
     super.initState();
     _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
       ..initialize().then((_) {
-        if (mounted) {
-          _controller.setVolume(0.0); // Глушим звук для фона
-          _controller.setLooping(true); // Зацикливаем (как гифку)
-          _controller.play(); // Запускаем сразу
-          setState(() {});
-        }
-      }).catchError((e) => print("Ошибка инлайн видео: $e"));
+        if (mounted) setState(() => _isInitialized = true);
+      }).catchError((e) {
+        debugPrint("Ошибка инлайн видео: $e");
+        return null;
+      });
+    _controller.addListener(() {
+      if (mounted) {
+        final playing = _controller.value.isPlaying;
+        if (playing != _isPlaying) setState(() => _isPlaying = playing);
+      }
+    });
   }
 
   @override
@@ -40,19 +46,37 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        // При тапе открываем на весь экран со звуком
-        Navigator.push(context, MaterialPageRoute(builder: (_) => FullscreenVideoScreen(
-          videoUrl: widget.url, senderName: widget.senderName, date: widget.date,
-        )));
+        if (!_isInitialized) return;
+        if (_isPlaying) {
+          _controller.pause();
+        } else {
+          // Открываем на весь экран со звуком
+          _controller.pause();
+          Navigator.push(context, MaterialPageRoute(builder: (_) => FullscreenVideoScreen(
+            videoUrl: widget.url, senderName: widget.senderName, date: widget.date,
+          )));
+        }
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: 200,
-          height: 250, // Прямоугольный формат
+          height: 250,
           color: Colors.black,
-          child: _controller.value.isInitialized
-              ? VideoPlayer(_controller)
+          child: _isInitialized
+              ? Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    VideoPlayer(_controller),
+                    // Показываем иконку Play поверх превью
+                    if (!_isPlaying)
+                      Container(
+                        decoration: BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+                        padding: const EdgeInsets.all(12),
+                        child: const Icon(Icons.play_arrow, color: Colors.white, size: 36),
+                      ),
+                  ],
+                )
               : const Center(child: CircularProgressIndicator(color: Colors.white)),
         ),
       ),

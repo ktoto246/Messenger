@@ -1,4 +1,4 @@
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:flutter/foundation.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 import '../config/app_config.dart';
 import 'auth_service.dart';
@@ -17,10 +17,18 @@ class CallService {
         .withUrl(AppConfig.callHubUrl, options: HttpConnectionOptions(accessTokenFactory: () async => token ?? ''))
         .build();
 
-    _callHub?.on("IncomingCall", (args) => onIncomingCall?.call(args![0] as int, args[1] as String));
-    _callHub?.on("CallAnswered", (args) => onCallAnswered?.call(args![0] as int, args[1] as String));
-    _callHub?.on("ReceiveIceCandidate", (args) => onIceCandidate?.call(args![0] as int, args[1] as String));
-    _callHub?.on("CallEnded", (args) => onCallEnded?.call(args![0] as int));
+    _callHub?.on("IncomingCall", (args) {
+      try { onIncomingCall?.call(args![0] as int, args[1] as String); } catch (e) { debugPrint("IncomingCall args error: $e"); }
+    });
+    _callHub?.on("CallAnswered", (args) {
+      try { onCallAnswered?.call(args![0] as int, args[1] as String); } catch (e) { debugPrint("CallAnswered args error: $e"); }
+    });
+    _callHub?.on("ReceiveIceCandidate", (args) {
+      try { onIceCandidate?.call(args![0] as int, args[1] as String); } catch (e) { debugPrint("ReceiveIceCandidate args error: $e"); }
+    });
+    _callHub?.on("CallEnded", (args) {
+      try { onCallEnded?.call(args![0] as int); } catch (e) { debugPrint("CallEnded args error: $e"); }
+    });
 
     await _callHub?.start();
   }

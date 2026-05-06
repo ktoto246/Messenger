@@ -32,7 +32,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
   // Общая функция сохранения настройки
   Future<void> _saveSetting(String key, int value, String dbFieldName) async {
     // 1. Обновляем локальный Hive (чтобы в настройки улетело)
-    var box = Hive.box('settings_box');
+    var box = Hive.isBoxOpen('settings_box') ? Hive.box('settings_box') : await Hive.openBox('settings_box');
     box.put(key, value);
 
     // 2. Тихо отправляем на C# бэкенд

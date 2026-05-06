@@ -40,9 +40,13 @@ class _AudioBubbleState extends State<AudioBubble> {
 
   void _toggleSpeed() async {
     setState(() {
-      if (_playbackSpeed == 1.0) _playbackSpeed = 1.5;
-      else if (_playbackSpeed == 1.5) _playbackSpeed = 2.0;
-      else _playbackSpeed = 1.0;
+      if (_playbackSpeed == 1.0) {
+        _playbackSpeed = 1.5;
+      } else if (_playbackSpeed == 1.5) {
+        _playbackSpeed = 2.0;
+      } else {
+        _playbackSpeed = 1.0;
+      }
     });
     await _audioPlayer.setPlaybackRate(_playbackSpeed);
   }
@@ -98,7 +102,7 @@ class _AudioBubbleState extends State<AudioBubble> {
                     final double percent = details.localPosition.dx / constraints.maxWidth;
                     await _audioPlayer.seek(Duration(milliseconds: (_duration.inMilliseconds * percent).toInt()));
                   },
-                  child: Container(
+                  child: SizedBox(
                     height: 30,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,

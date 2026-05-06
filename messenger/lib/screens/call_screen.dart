@@ -25,15 +25,25 @@ class _CallScreenState extends State<CallScreen> {
   final CallService _callService = CallService();
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
-  
+
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
+
+  // Флаг для входящих: ждём действия пользователя
+  bool _isCallAccepted = false;
+  bool _isCallConnecting = false;
 
   @override
   void initState() {
     super.initState();
     _initRenderers();
-    _initCall();
+    // Для исходящего звонка — сразу инициируем
+    // Для входящего — ждём нажатия "Принять"
+    if (!widget.isIncoming) {
+      _initCall();
+    } else {
+      _callService.init();
+    }
   }
 
   Future<void> _initRenderers() async {
@@ -42,32 +52,47 @@ class _CallScreenState extends State<CallScreen> {
   }
 
   Future<void> _initCall() async {
-    await _callService.init();
-    
-    _callService.onCallAnswered = (id, answer) async {
-      if (id == widget.targetUserId) {
-        await _peerConnection?.setRemoteDescription(RTCSessionDescription(jsonDecode(answer)['sdp'], 'answer'));
+    setState(() => _isCallConnecting = true);
+    try {
+      await _callService.init();
+
+      _callService.onCallAnswered = (id, answer) async {
+        if (!mounted) return;
+        if (id == widget.targetUserId) {
+          await _peerConnection?.setRemoteDescription(
+              RTCSessionDescription(jsonDecode(answer)['sdp'], 'answer'));
+        }
+      };
+
+      _callService.onIceCandidate = (id, candidate) async {
+        if (id == widget.targetUserId) {
+          var data = jsonDecode(candidate);
+          await _peerConnection?.addCandidate(
+              RTCIceCandidate(data['candidate'], data['sdpMid'], data['sdpMLineIndex']));
+        }
+      };
+
+      _callService.onCallEnded = (id) {
+        if (id == widget.targetUserId) _endCall();
+      };
+
+      await _createPeerConnection();
+
+      if (widget.isIncoming && widget.remoteOffer != null) {
+        await _handleIncomingCall(widget.remoteOffer!);
+      } else {
+        await _makeOffer();
       }
-    };
-
-    _callService.onIceCandidate = (id, candidate) async {
-      if (id == widget.targetUserId) {
-        var data = jsonDecode(candidate);
-        await _peerConnection?.addCandidate(RTCIceCandidate(data['candidate'], data['sdpMid'], data['sdpMLineIndex']));
+    } catch (e) {
+      debugPrint("Ошибка инициализации звонка: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Ошибка звонка: $e"), backgroundColor: Colors.red),
+        );
+        Navigator.pop(context);
       }
-    };
-
-    _callService.onCallEnded = (id) {
-      if (id == widget.targetUserId) _endCall();
-    };
-
-    await _createPeerConnection();
-
-    if (widget.isIncoming && widget.remoteOffer != null) {
-      // Авто-ответ для упрощения демонстрации (в идеале кнопка "Принять")
-      await _handleIncomingCall(widget.remoteOffer!);
-    } else {
-      await _makeOffer();
+    } finally {
+      if (mounted) setState(() => _isCallConnecting = false);
     }
   }
 
@@ -75,9 +100,9 @@ class _CallScreenState extends State<CallScreen> {
     Map<String, dynamic> config = {
       'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}]
     };
-    
+
     _peerConnection = await createPeerConnection(config);
-    
+
     _peerConnection!.onIceCandidate = (candidate) {
       _callService.sendIceCandidate(widget.targetUserId, jsonEncode({
         'candidate': candidate.candidate,
@@ -115,6 +140,16 @@ class _CallScreenState extends State<CallScreen> {
     await _callService.answerCall(widget.targetUserId, jsonEncode({'sdp': answer.sdp}));
   }
 
+  void _acceptCall() {
+    setState(() => _isCallAccepted = true);
+    _initCall();
+  }
+
+  void _declineCall() {
+    _callService.hangup(widget.targetUserId);
+    if (mounted) Navigator.pop(context);
+  }
+
   void _endCall() {
     _localStream?.dispose();
     _peerConnection?.close();
@@ -132,19 +167,133 @@ class _CallScreenState extends State<CallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Входящий звонок — показываем экран принятия/отклонения
+    if (widget.isIncoming && !_isCallAccepted) {
+      return _buildIncomingCallScreen();
+    }
+    return _buildActiveCallScreen();
+  }
+
+  /// Экран входящего звонка с кнопками «Принять» / «Отклонить»
+  Widget _buildIncomingCallScreen() {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1A1A2E),
+      body: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const SizedBox(height: 60),
+            // Аватар и имя
+            Column(
+              children: [
+                CircleAvatar(
+                  radius: 60,
+                  backgroundColor: Colors.blue.withValues(alpha: 0.3),
+                  child: Text(
+                    widget.targetUserName.isNotEmpty ? widget.targetUserName[0].toUpperCase() : '?',
+                    style: const TextStyle(fontSize: 50, color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  widget.targetUserName,
+                  style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  "Входящий видеозвонок...",
+                  style: TextStyle(color: Colors.white60, fontSize: 16),
+                ),
+              ],
+            ),
+            // Кнопки
+            Padding(
+              padding: const EdgeInsets.only(bottom: 60),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // Отклонить
+                  _buildCallButton(
+                    icon: Icons.call_end,
+                    color: Colors.red,
+                    label: "Отклонить",
+                    onTap: _declineCall,
+                  ),
+                  // Принять
+                  _buildCallButton(
+                    icon: Icons.call,
+                    color: Colors.green,
+                    label: "Принять",
+                    onTap: _acceptCall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCallButton({required IconData icon, required Color color, required String label, required VoidCallback onTap}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            child: Icon(icon, color: Colors.white, size: 36),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+      ],
+    );
+  }
+
+  /// Активный звонок (после принятия или исходящий)
+  Widget _buildActiveCallScreen() {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
           Positioned.fill(child: RTCVideoView(_remoteRenderer)),
-          Positioned(right: 20, top: 40, width: 120, height: 160, child: Container(color: Colors.black54, child: RTCVideoView(_localRenderer, mirror: true))),
-          Positioned(bottom: 50, left: 0, right: 0, child: Column(
-            children: [
-              Text(widget.targetUserName, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 30),
-              CircleAvatar(radius: 35, backgroundColor: Colors.red, child: IconButton(icon: const Icon(Icons.call_end, color: Colors.white, size: 30), onPressed: _endCall)),
-            ],
-          )),
+          Positioned(
+            right: 20, top: 40, width: 120, height: 160,
+            child: Container(color: Colors.black54, child: RTCVideoView(_localRenderer, mirror: true)),
+          ),
+          if (_isCallConnecting)
+            const Center(child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(color: Colors.white),
+                SizedBox(height: 16),
+                Text("Соединение...", style: TextStyle(color: Colors.white, fontSize: 16)),
+              ],
+            )),
+          Positioned(
+            bottom: 50, left: 0, right: 0,
+            child: Column(
+              children: [
+                Text(
+                  widget.targetUserName,
+                  style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 30),
+                CircleAvatar(
+                  radius: 35,
+                  backgroundColor: Colors.red,
+                  child: IconButton(
+                    icon: const Icon(Icons.call_end, color: Colors.white, size: 30),
+                    onPressed: _endCall,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

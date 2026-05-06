@@ -62,7 +62,7 @@ class _VideoCircleState extends State<VideoCircle> {
         }
       });
     } catch (e) {
-      print("Ошибка загрузки видео: $e");
+      debugPrint("Ошибка загрузки video: $e");
       if (mounted) setState(() => _isDownloading = false);
     }
   }

@@ -1,7 +1,10 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'dart:ui';
+import 'dart:async';
+import 'services/notification_service.dart';
 
 // Твои экраны
 import 'screens/login_screen.dart';
@@ -19,7 +22,7 @@ void main() async {
   try {
     await Firebase.initializeApp(); // 🔔 Инициализация Firebase
   } catch (e) {
-    print("Firebase не инициализирован. Проверьте google-services.json");
+    debugPrint("Firebase не инициализирован. Проверьте google-services.json");
   }
   
   // 1. Инициализируем локальную базу данных (Hive)
@@ -29,7 +32,16 @@ void main() async {
   
   // 2. Достаем тему (чтобы не слепило белым при входе)
   var settingsBox = await Hive.openBox('settings_box');
-  themeNotifier.value = settingsBox.get('isDarkMode', defaultValue: false);
+  final bool savedDark = settingsBox.get('isDarkMode', defaultValue: false) as bool;
+  // Проверяем ночной режим по расписанию
+  final bool nightScheduleDark = await NotificationService.shouldBeDarkNow();
+  themeNotifier.value = savedDark || nightScheduleDark;
+  // Проверяем расписание каждую минуту
+  Timer.periodic(const Duration(minutes: 1), (_) async {
+    final shouldBeDark = await NotificationService.shouldBeDarkNow();
+    final currentlySaved = (await Hive.openBox('settings_box')).get('isDarkMode', defaultValue: false) as bool;
+    themeNotifier.value = currentlySaved || shouldBeDark;
+  });
 
   // 3. 🪄 МАГИЯ АВТОВХОДА: Проверяем, есть ли сохраненный ID пользователя (Через SecureStorage)
   const storage = FlutterSecureStorage();

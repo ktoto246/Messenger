@@ -99,7 +99,11 @@ class _ForeignProfileScreenState extends State<ForeignProfileScreen> {
     bool hasMusic = musicUrl != null && musicUrl.isNotEmpty;
     if (!hasMusic) return const SizedBox.shrink(); 
     String trackName = "Вайб пользователя";
-    try { trackName = Uri.parse(musicUrl).queryParameters['name'] ?? "Вайб пользователя"; } catch (e) {}
+    try {
+      trackName = Uri.parse(musicUrl).queryParameters['name'] ?? "Вайб пользователя";
+    } catch (e) {
+      debugPrint("Error parsing music URL: $e");
+    }
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: const Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(16)),
@@ -112,11 +116,15 @@ class _ForeignProfileScreenState extends State<ForeignProfileScreen> {
                   String cleanUrl = musicUrl.split('?').first;
                   if (!cleanUrl.startsWith('http')) {
                     cleanUrl = cleanUrl.startsWith('/') ? cleanUrl.substring(1) : cleanUrl;
-                    final base = AppConfig.baseUrl.replaceAll('/api', '');
-                    cleanUrl = "$base/$cleanUrl"; 
+                    final serverBase = AppConfig.baseUrl.replaceAll('/api', '');
+                    cleanUrl = "$serverBase/$cleanUrl";
                   }
                   await _audioPlayer.play(UrlSource(cleanUrl));
-                } catch (e) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ошибка воспроизведения 🚫"), backgroundColor: Colors.red)); }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ошибка воспроизведения 🚫"), backgroundColor: Colors.red));
+                  }
+                }
               }
             },
             child: CircleAvatar(radius: 24, backgroundColor: Colors.blueAccent, child: Icon(_isPlayingMusic ? Icons.pause : Icons.play_arrow, color: Colors.white, size: 30)),

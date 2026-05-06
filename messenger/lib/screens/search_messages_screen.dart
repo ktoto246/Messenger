@@ -57,16 +57,24 @@ class _SearchMessagesScreenState extends State<SearchMessagesScreen> {
             itemCount: _results.length,
             itemBuilder: (context, index) {
               final msg = _results[index];
-              final date = DateTime.parse(msg['sentAt']).toLocal();
+              final sentAt = msg['sentAt'];
+              DateTime? date;
+              try {
+                if (sentAt != null && (sentAt as String).isNotEmpty) {
+                  date = DateTime.parse(sentAt).toLocal();
+                }
+              } catch (_) {}
+              
+              final chatId = msg['chatID'] ?? msg['chatId'];
               
               return ListTile(
                 leading: const CircleAvatar(child: Icon(Icons.message)),
                 title: Text(msg['chatName'] ?? "Чат"),
                 subtitle: Text(msg['contentText'] ?? ""),
-                trailing: Text(DateFormat('HH:mm').format(date)),
-                onTap: () {
+                trailing: date != null ? Text(DateFormat('HH:mm').format(date)) : null,
+                onTap: chatId == null ? null : () {
                   Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(
-                    chatId: msg['chatID'], 
+                    chatId: chatId, 
                     chatName: msg['chatName'] ?? "Чат", 
                     currentUserId: widget.currentUserId
                   )));

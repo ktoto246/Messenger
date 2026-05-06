@@ -57,8 +57,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _register() async {
-    if (_usernameController.text.isEmpty || _emailController.text.isEmpty || _passwordController.text.isEmpty || _displayNameController.text.isEmpty) {
+    final username = _usernameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final displayName = _displayNameController.text.trim();
+
+    if (username.isEmpty || email.isEmpty || password.isEmpty || displayName.isEmpty) {
       _showCustomMessage('Заполните все поля', type: 0);
+      return;
+    }
+
+    final emailRegex = RegExp(r'^[\w\.-]+@[\w\.-]+\.\w{2,}$');
+    if (!emailRegex.hasMatch(email)) {
+      _showCustomMessage('Введите корректный Email адрес', type: 2);
+      return;
+    }
+
+    if (password.length < 6) {
+      _showCustomMessage('Пароль должен содержать минимум 6 символов', type: 2);
       return;
     }
 
@@ -66,10 +82,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     
     try {
       final success = await _authService.register(
-        _emailController.text,
-        _passwordController.text,
-        _displayNameController.text,
-        _usernameController.text, 
+        email,
+        password,
+        displayName,
+        username, 
       ).timeout(const Duration(seconds: 5));
       
       setState(() => _isLoading = false);

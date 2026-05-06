@@ -34,7 +34,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         _members = data;
         _isLoading = false;
         // Проверяем, является ли текущий пользователь админом
-        _isAdmin = _members.any((m) => (m['userId'] ?? m['UserID']) == widget.currentUserId && (m['isAdmin'] ?? m['IsAdmin'] == true));
+        _isAdmin = _members.any((m) => (m['userId'] ?? m['UserID']) == widget.currentUserId && ((m['isAdmin'] ?? m['IsAdmin']) == true));
       });
     }
   }
@@ -62,7 +62,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   void _addMember() async {
     // Для простоты используем поиск пользователей
     // В реальном приложении тут был бы выбор из контактов
-    String? query;
     List<dynamic> searchResults = [];
 
     await showDialog(
@@ -221,7 +220,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   itemBuilder: (context, index) {
                     final member = _members[index];
                     final String name = member['displayName'] ?? member['DisplayName'] ?? 'User';
-                    final int memberId = member['userId'] ?? member['UserId'];
+                    final int? memberId = member['userId'] ?? member['UserId'];
+                    if (memberId == null) return const SizedBox.shrink();
                     final bool isMe = memberId == widget.currentUserId;
                     final bool memberIsAdmin = member['isAdmin'] ?? member['IsAdmin'] ?? false;
 

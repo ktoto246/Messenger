@@ -46,9 +46,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
   final List<String> _filters = ['Все', 'Личные', 'Группы'];
   
   HubConnection? _hubConnection;
-  Map<int, Timer> _typingChats = {}; 
+  final Map<int, Timer> _typingChats = {}; 
   StreamSubscription? _networkSubscription; 
-  
+  List<int> _archivedChatIds = [];
+  bool _showArchived = false;
 
 
   @override
@@ -56,6 +57,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
     super.initState();
     _loadData();
     _searchController.addListener(_onSearchChanged);
+    // Загружаем список архивированных чатов
+    _chatService.getArchivedChatIds().then((ids) {
+      if (mounted) setState(() => _archivedChatIds = ids);
+    });
 
     _networkSubscription = Connectivity().onConnectivityChanged.listen((dynamic result) {
       bool hasConnection = false;
@@ -276,7 +281,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         child: Column(
           children: [
             UserAccountsDrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1)),
+              decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1)),
               accountName: Text(myDisplayName, style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
               accountEmail: const Text("VEINPulse Pro User", style: TextStyle(color: Colors.blue)),
               currentAccountPicture: CircleAvatar(
@@ -291,7 +296,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
               onTap: () async {
                 Navigator.pop(context);
                 int? savedChatId = await _chatService.getOrCreateSavedMessages(currentUserId!);
-                if (savedChatId != null) Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId)));
+                if (savedChatId != null && mounted) {
+                  if (context.mounted) {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId)));
+                  }
+                }
               },
             ),
             ListTile(
@@ -303,6 +312,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
               },
             ),
             const Divider(),
+            ListTile(
+              leading: const Icon(Icons.archive, color: Colors.blueGrey),
+              title: Text("Архив", style: TextStyle(color: textColor)),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _showArchived = !_showArchived);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.settings, color: Colors.grey),
               title: Text("Настройки", style: TextStyle(color: textColor)),
@@ -364,7 +381,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           if (currentUserId == null) return;
                           int? savedChatId = await _chatService.getOrCreateSavedMessages(currentUserId!);
                           if (savedChatId != null && mounted) {
-                            await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId)));
+                            if (context.mounted) {
+                              await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId)));
+                            }
                             _refreshChats();
                           }
                         },
@@ -445,7 +464,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                       selected: _selectedFolderId == f['folderID'],
                       onSelected: (_) => setState(() { _selectedFolderId = f['folderID']; _onSearchChanged(); }),
                     ),
-                  )).toList(),
+                  )),
                   IconButton(
                     icon: const Icon(Icons.add_circle_outline, size: 20),
                     onPressed: () async {
@@ -481,7 +500,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                     : ListView.separated(
                         physics: const AlwaysScrollableScrollPhysics(), 
                         itemCount: _filteredChats.length,
-                        separatorBuilder: (_, __) => Divider(indent: 76, height: 1, color: dividerColor),
+                        separatorBuilder: (_, _) => Divider(indent: 76, height: 1, color: dividerColor),
                         itemBuilder: (context, index) {
                           final chat = _filteredChats[index];
                           final chatName = chat['chatName'] ?? chat['ChatName'] ?? 'Unknown';
@@ -610,8 +629,12 @@ String formatChatDateTime(String? dateTimeStr) {
     final messageDay = DateTime(dt.year, dt.month, dt.day);
     final difference = today.difference(messageDay).inDays;
 
-    if (difference == 0) return "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
-    else if (difference == 1) return "Вчера";
-    else return "${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year.toString().substring(2)}";
+    if (difference == 0) {
+      return "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+    } else if (difference == 1) {
+      return "Вчера";
+    } else {
+      return "${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year.toString().substring(2)}";
+    }
   } catch (e) { return ''; }
 }

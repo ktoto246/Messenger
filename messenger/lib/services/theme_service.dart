@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import 'auth_service.dart';
@@ -19,7 +20,7 @@ class ThemeService {
       final headers = await _getHeaders();
       final response = await http.get(Uri.parse(baseUrl), headers: headers);
       if (response.statusCode == 200) return jsonDecode(response.body);
-    } catch (e) { print("Ошибка тем: $e"); }
+    } catch (e) { debugPrint("Ошибка тем: $e"); }
     return null;
   }
 
@@ -31,6 +32,6 @@ class ThemeService {
         headers: headers,
         body: jsonEncode(themeData),
       );
-    } catch (e) { print("Ошибка сохранения темы: $e"); }
+    } catch (e) { debugPrint("Ошибка сохранения темы: $e"); }
   }
 }

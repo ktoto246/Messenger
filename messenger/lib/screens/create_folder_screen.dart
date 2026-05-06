@@ -16,7 +16,7 @@ class _CreateFolderScreenState extends State<CreateFolderScreen> {
   final TextEditingController _nameController = TextEditingController();
   
   List<dynamic> _allChats = [];
-  List<int> _selectedChatIds = [];
+  final List<int> _selectedChatIds = [];
   bool _isLoading = true;
 
   @override
@@ -27,10 +27,12 @@ class _CreateFolderScreenState extends State<CreateFolderScreen> {
 
   void _loadChats() async {
     final chats = await _chatService.fetchChats(widget.currentUserId);
-    setState(() {
-      _allChats = chats;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _allChats = chats;
+        _isLoading = false;
+      });
+    }
   }
 
   void _save() async {
@@ -66,8 +68,11 @@ class _CreateFolderScreenState extends State<CreateFolderScreen> {
                   value: isSelected,
                   onChanged: (val) {
                     setState(() {
-                      if (val == true) _selectedChatIds.add(chatId);
-                      else _selectedChatIds.remove(chatId);
+                      if (val == true) {
+                        _selectedChatIds.add(chatId);
+                      } else {
+                        _selectedChatIds.remove(chatId);
+                      }
                     });
                   },
                 );

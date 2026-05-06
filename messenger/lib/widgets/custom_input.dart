@@ -26,14 +26,21 @@ class _CustomInputFieldState extends State<CustomInputField> {
   void initState() {
     super.initState();
     _isObscured = widget.isPassword;
-    
-    widget.controller.addListener(() {
-      if (mounted) {
-        setState(() {
-          _showClearButton = widget.controller.text.isNotEmpty;
-        });
-      }
-    });
+    widget.controller.addListener(_onControllerChanged);
+  }
+
+  void _onControllerChanged() {
+    if (mounted) {
+      setState(() {
+        _showClearButton = widget.controller.text.isNotEmpty;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerChanged);
+    super.dispose();
   }
 
   @override

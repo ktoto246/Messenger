@@ -73,7 +73,9 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ошибка создания чата")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ошибка создания чата")));
+      }
     }
   }
 

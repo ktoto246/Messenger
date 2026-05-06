@@ -53,15 +53,29 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
  void _login() async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
       _showCustomMessage('Пожалуйста, заполните почту и пароль', type: 0);
+      return;
+    }
+
+    final emailRegex = RegExp(r'^[\w\.-]+@[\w\.-]+\.\w{2,}$');
+    if (!emailRegex.hasMatch(email)) {
+      _showCustomMessage('Введите корректный Email адрес', type: 2);
+      return;
+    }
+
+    if (password.length < 6) {
+      _showCustomMessage('Пароль должен содержать минимум 6 символов', type: 2);
       return;
     }
 
     setState(() => _isLoading = true);
     
     try {
-      final success = await _authService.login(_emailController.text, _passwordController.text);
+      final success = await _authService.login(email, password);
       
       if (success) {
         // Загружаем тему

@@ -3,6 +3,7 @@ import '../services/auth_service.dart';
 import '../services/chat_service.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
+import 'qr_profile_screen.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
@@ -60,7 +61,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _logout() async {
     await _authService.updateOnlineStatus(false);
-    print("⚫ Статус изменен на Офлайн перед выходом");
+    debugPrint("⚫ Статус изменен на Офлайн перед выходом");
 
     await _authService.logout();
 
@@ -102,8 +103,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
     } catch (e) {
-      setState(() => _isUploadingMusic = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ошибка загрузки: $e")));
+      if (mounted) {
+        setState(() => _isUploadingMusic = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ошибка загрузки: $e")));
+      }
     }
   }
 
@@ -136,12 +139,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   String cleanUrl = _musicUrl!.split('?').first;
                   if (!cleanUrl.startsWith('http')) {
                     cleanUrl = cleanUrl.startsWith('/') ? cleanUrl.substring(1) : cleanUrl;
-                    final base = AppConfig.baseUrl.replaceAll('/api', '');
-                    cleanUrl = "$base/$cleanUrl"; 
+                    cleanUrl = "${AppConfig.baseUrl.replaceAll('/api', '')}/$cleanUrl";
                   }
                   await _audioPlayer.play(UrlSource(cleanUrl));
                 } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ошибка воспроизведения 🚫"), backgroundColor: Colors.red));
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ошибка воспроизведения 🚫"), backgroundColor: Colors.red));
+                  }
                 }
               }
             } : _pickAndUploadMusic),
@@ -197,12 +201,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: bgColor,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_2),
+            tooltip: 'QR-код',
+            onPressed: () {
+              if (userProfile == null) return;
+              final userId = userProfile!['userID'] ?? userProfile!['UserId'] ?? 0;
+              Navigator.push(context, MaterialPageRoute(builder: (_) => QrProfileScreen(
+                userId: userId is int ? userId : int.tryParse(userId.toString()) ?? 0,
+                displayName: userProfile!['displayName'] ?? 'User',
+                username: userProfile!['username'] ?? 'user',
+                avatarUrl: userProfile!['avatarUrl'],
+              )));
+            },
+          ),
           TextButton(
             onPressed: _logout,
             child: Text(
-              "Done", // Кнопка ВЫХОДА (логика не тронута)
+              "Done",
               style: TextStyle(
-                color: textColor, // Теперь ее видно всегда!
+                color: textColor,
                 fontSize: 17,
                 fontWeight: FontWeight.bold,
               ),
@@ -305,10 +323,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Text(title, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400, color: textColor)), // Адаптивный цвет
             const Spacer(),
             if (trailingText != null)
-              Text(trailingText, style: TextStyle(fontSize: 17, color: textColor.withOpacity(0.4))), // Адаптивный цвет
+              Text(trailingText, style: TextStyle(fontSize: 17, color: textColor.withValues(alpha: 0.4))), // Адаптивный цвет
             if (showArrow)
-               Padding(padding: const EdgeInsets.only(left: 8.0), child: Icon(Icons.chevron_right, color: textColor.withOpacity(0.3))),
-            if (trailing != null) trailing,
+               Padding(padding: const EdgeInsets.only(left: 8.0), child: Icon(Icons.chevron_right, color: textColor.withValues(alpha: 0.3))),
+            ?trailing,
           ],
         ),
       ),

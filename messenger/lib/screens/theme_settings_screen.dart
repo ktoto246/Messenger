@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../services/chat_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/app_config.dart';
@@ -15,7 +14,6 @@ class ThemeSettingsScreen extends StatefulWidget {
 }
 
 class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
-  final ChatService _chatService = ChatService();
   
   String _primaryColorHex = "#007AFF";
   double _bubbleOpacity = 0.8;
@@ -78,7 +76,9 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
         }),
       );
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Тема сохранена в облаке ☁️")));
-    } catch (e) {}
+    } catch (e) {
+       debugPrint("Error saving theme: $e");
+    }
   }
 
   Color _parseHex(String hex) {
@@ -140,7 +140,7 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
                   alignment: Alignment.centerRight,
                   child: Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: _parseHex(_primaryColorHex).withOpacity(_bubbleOpacity), borderRadius: BorderRadius.circular(15)),
+                    decoration: BoxDecoration(color: _parseHex(_primaryColorHex).withValues(alpha: _bubbleOpacity), borderRadius: BorderRadius.circular(15)),
                     child: const Text("Привет! Как тебе новая тема?", style: TextStyle(color: Colors.white)),
                   ),
                 ),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -29,7 +30,7 @@ class ChatService {
         return jsonDecode(response.body);
       }
     } catch (e) {
-      print("Нет сети! Достаем чаты из Hive 💾");
+      debugPrint("Нет сети! Достаем чаты из Hive 💾");
     }
     
     final cachedJson = box.get(cacheKey);
@@ -38,22 +39,26 @@ class ChatService {
   }
 
   // 2. Получить сообщения (С ОФЛАЙН КЭШЕМ)
-  Future<List<dynamic>> fetchMessages(int chatId, {int skip = 0, int take = 30}) async {
+  Future<List<dynamic>> fetchMessages(int chatId, {int? lastMessageId, int take = 30}) async {
     final box = Hive.box('messages_box');
-    final cacheKey = 'msgs_${chatId}_$skip'; 
+    final cacheKey = 'msgs_${chatId}_0'; 
 
     try {
       final headers = await _getHeaders();
-      final response = await http.get(Uri.parse('$baseUrl/chats/$chatId/messages?skip=$skip&take=$take'), headers: headers).timeout(const Duration(seconds: 3));
+      final url = lastMessageId != null 
+          ? '$baseUrl/chats/$chatId/messages?lastMessageId=$lastMessageId&take=$take'
+          : '$baseUrl/chats/$chatId/messages?take=$take';
+
+      final response = await http.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 3));
       if (response.statusCode == 200) {
-        if (skip == 0) await box.put(cacheKey, response.body); 
+        if (lastMessageId == null) await box.put(cacheKey, response.body); 
         return jsonDecode(response.body);
       }
     } catch (e) {
-      print("Нет сети! Достаем сообщения из Hive 💾");
+      debugPrint("Нет сети! Достаем сообщения из Hive 💾");
     }
 
-    if (skip == 0) {
+    if (lastMessageId == null) {
       final cachedJson = box.get(cacheKey);
       if (cachedJson != null) return jsonDecode(cachedJson);
     }
@@ -73,7 +78,7 @@ class ChatService {
         return jsonDecode(response.body);
       }
     } catch (e) {
-      print("Нет сети! Достаем профиль из Hive 💾");
+      debugPrint("Нет сети! Достаем профиль из Hive 💾");
     }
     
     final cachedJson = box.get(cacheKey);
@@ -102,9 +107,13 @@ class ChatService {
 
       if (response.statusCode == 401) throw Exception("UNAUTHORIZED");
       if (response.statusCode != 200) throw Exception("SERVER_ERROR");
-    } catch (e) { 
-      print("Сообщение не отправлено. Сохраняем в очередь 💾: $e");
-      // Сохраняем в очередь для повторной отправки
+    } on Exception catch (e) {
+      final errStr = e.toString();
+      // Не кешируем ошибки сервера (400/500), только сетевые таймауты
+      if (errStr.contains("UNAUTHORIZED")) throw Exception("SESSION_EXPIRED");
+      if (errStr.contains("SERVER_ERROR")) rethrow;
+      // Сетевая ошибка — сохраняем в очередь
+      debugPrint("Сообщение не отправлено. Сохраняем в очередь 💾: $e");
       final box = await Hive.openBox('pending_messages');
       await box.add({
         "chatId": chatId,
@@ -112,7 +121,6 @@ class ChatService {
         "data": body,
         "timestamp": DateTime.now().millisecondsSinceEpoch
       });
-      if (e.toString().contains("UNAUTHORIZED")) throw Exception("SESSION_EXPIRED");
     }
   }
 
@@ -134,7 +142,7 @@ class ChatService {
 
         if (response.statusCode == 200) {
           await box.delete(key);
-          print("Офлайн сообщение успешно отправлено! ✅");
+          debugPrint("Офлайн сообщение успешно отправлено! ✅");
         }
       } catch (e) {
         break; // Если всё еще нет сети, прерываем цикл
@@ -146,7 +154,7 @@ class ChatService {
     try {
       final headers = await _getHeaders();
       await http.post(Uri.parse('$baseUrl/messages/$messageId/view-once'), headers: headers);
-    } catch (e) { print("Ошибка markViewOnceAsViewed: $e"); }
+    } catch (e) { debugPrint("Ошибка markViewOnceAsViewed: $e"); }
   }
 
   Future<String?> translateMessage(int messageId) async {
@@ -154,7 +162,7 @@ class ChatService {
       final headers = await _getHeaders();
       final response = await http.post(Uri.parse('$baseUrl/messages/$messageId/translate'), headers: headers);
       if (response.statusCode == 200) return jsonDecode(response.body)['translatedText'];
-    } catch (e) { print("Ошибка перевода: $e"); }
+    } catch (e) { debugPrint("Ошибка перевода: $e"); }
     return null;
   }
 
@@ -170,24 +178,28 @@ class ChatService {
         var json = jsonDecode(responseData);
         return json['mediaUrl']; 
       }
-    } catch (e) { print("Ошибка загрузки медиа: $e"); }
+    } catch (e) { debugPrint("Ошибка загрузки медиа: $e"); }
     return null;
   }
 
   // 4. Поиск пользователей
   Future<List<dynamic>> searchUsers(String query) async {
-    final headers = await _getHeaders();
-    final uri = Uri.parse('$baseUrl/users/search').replace(queryParameters: {'query': query});
-    final response = await http.get(uri, headers: headers);
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    try {
+      final headers = await _getHeaders();
+      final uri = Uri.parse('$baseUrl/users/search').replace(queryParameters: {'query': query});
+      final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) { debugPrint("Ошибка поиска пользователей: $e"); }
     return [];
   }
 
   // 5. Создать личный чат
   Future<int?> createPrivateChat(int currentUserId, int targetUserId) async {
-    final headers = await _getHeaders();
-    final response = await http.post(Uri.parse('$baseUrl/chats/private'), headers: headers, body: jsonEncode(targetUserId));
-    if (response.statusCode == 200) return jsonDecode(response.body)['chatId'];
+    try {
+      final headers = await _getHeaders();
+      final response = await http.post(Uri.parse('$baseUrl/chats/private'), headers: headers, body: jsonEncode(targetUserId)).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) return jsonDecode(response.body)['chatId'];
+    } catch (e) { debugPrint("Ошибка создания личного чата: $e"); }
     return null;
   }
 
@@ -204,7 +216,7 @@ class ChatService {
     try { 
       final headers = await _getHeaders();
       await http.post(Uri.parse('$baseUrl/chats/$chatId/read'), headers: headers); 
-    } catch (e) { print("Ошибка при отметке прочитанного: $e"); }
+    } catch (e) { debugPrint("Ошибка при отметке прочитанного: $e"); }
   }
 
   // 7. НАСТОЯЩЕЕ РЕДАКТИРОВАНИЕ
@@ -213,7 +225,7 @@ class ChatService {
       final headers = await _getHeaders();
       final response = await http.put(Uri.parse('$baseUrl/messages/$messageId'), headers: headers, body: jsonEncode(newText));
       if (response.statusCode != 200) throw Exception("Ошибка редактирования");
-    } catch (e) { print("Ошибка: $e"); }
+    } catch (e) { debugPrint("Ошибка: $e"); }
   }
 
   // 8. НАСТОЯЩЕЕ УДАЛЕНИЕ
@@ -222,7 +234,7 @@ class ChatService {
       final headers = await _getHeaders();
       final response = await http.delete(Uri.parse('$baseUrl/messages/$messageId'), headers: headers);
       if (response.statusCode != 200) throw Exception("Ошибка удаления");
-    } catch (e) { print("Ошибка: $e"); }
+    } catch (e) { debugPrint("Ошибка: $e"); }
   }
 
   // 9. ЗАКРЕПИТЬ / ОТКРЕПИТЬ СООБЩЕНИЕ
@@ -231,7 +243,7 @@ class ChatService {
       final headers = await _getHeaders();
       final response = await http.put(Uri.parse('$baseUrl/messages/$messageId/pin'), headers: headers);
       if (response.statusCode != 200) throw Exception("Ошибка закрепа");
-    } catch (e) { print("Ошибка: $e"); }
+    } catch (e) { debugPrint("Ошибка: $e"); }
   }
 
   // 10. ЗАКРЕПИТЬ / ОТКРЕПИТЬ ЧАТ
@@ -239,7 +251,7 @@ class ChatService {
     try {
       final headers = await _getHeaders();
       await http.put(Uri.parse('$baseUrl/chats/$chatId/pin'), headers: headers);
-    } catch (e) { print("Ошибка закрепа чата: $e"); }
+    } catch (e) { debugPrint("Ошибка закрепа чата: $e"); }
   }
 
   // 11. УДАЛИТЬ ЧАТ (Выйти из него)
@@ -248,7 +260,7 @@ class ChatService {
       final headers = await _getHeaders();
       final response = await http.delete(Uri.parse('$baseUrl/chats/$chatId'), headers: headers);
       if (response.statusCode != 200) throw Exception("Ошибка удаления чата");
-    } catch (e) { print("Ошибка: $e"); }
+    } catch (e) { debugPrint("Ошибка: $e"); }
   }
 
   // 12. ПОЛУЧИТЬ ИЛИ СОЗДАТЬ "ИЗБРАННОЕ" (Saved Messages)
@@ -257,7 +269,7 @@ class ChatService {
       final headers = await _getHeaders();
       final response = await http.post(Uri.parse('$baseUrl/chats/saved-messages'), headers: headers);
       if (response.statusCode == 200) return jsonDecode(response.body)['chatId'];
-    } catch (e) { print("Ошибка Избранного: $e"); }
+    } catch (e) { debugPrint("Ошибка Избранного: $e"); }
     return null;
   }
 
@@ -267,7 +279,7 @@ class ChatService {
       final headers = await _getHeaders();
       final response = await http.put(Uri.parse('$baseUrl/users/$userId'), headers: headers, body: jsonEncode(updatedData));
       if (response.statusCode != 200) throw Exception("Ошибка обновления профиля");
-    } catch (e) { print("Ошибка: $e"); }
+    } catch (e) { debugPrint("Ошибка: $e"); }
   }
 
   // 14. ПОЛУЧИТЬ УЧАСТНИКОВ ГРУППЫ
@@ -276,7 +288,7 @@ class ChatService {
       final headers = await _getHeaders();
       final response = await http.get(Uri.parse('$baseUrl/chats/$chatId/members'), headers: headers).timeout(const Duration(seconds: 3));
       if (response.statusCode == 200) return jsonDecode(response.body);
-    } catch (e) { print("Ошибка получения участников группы: $e"); }
+    } catch (e) { debugPrint("Ошибка получения участников группы: $e"); }
     return [];
   }
 
@@ -288,12 +300,12 @@ class ChatService {
         Uri.parse('$baseUrl/chats/$chatId'),
         headers: headers,
         body: jsonEncode({
-          if (name != null) 'groupName': name,
-          if (avatarUrl != null) 'avatarUrl': avatarUrl,
+          'groupName': ?name,
+          'avatarUrl': ?avatarUrl,
         }),
       );
       if (response.statusCode != 200) throw Exception("Ошибка обновления группы");
-    } catch (e) { print("Ошибка: $e"); }
+    } catch (e) { debugPrint("Ошибка: $e"); }
   }
 
   // 16. ДОБАВИТЬ УЧАСТНИКОВ В ГРУППУ
@@ -302,7 +314,7 @@ class ChatService {
       final headers = await _getHeaders();
       final response = await http.post(Uri.parse('$baseUrl/chats/$chatId/participants'), headers: headers, body: jsonEncode(userIds));
       if (response.statusCode != 200) throw Exception("Ошибка добавления участников");
-    } catch (e) { print("Ошибка: $e"); }
+    } catch (e) { debugPrint("Ошибка: $e"); }
   }
 
   // 17. ИСКЛЮЧИТЬ УЧАСТНИКА (КИК)
@@ -311,7 +323,7 @@ class ChatService {
       final headers = await _getHeaders();
       final response = await http.delete(Uri.parse('$baseUrl/chats/$chatId/participants/$userId'), headers: headers);
       if (response.statusCode != 200) throw Exception("Ошибка исключения участника");
-    } catch (e) { print("Ошибка: $e"); }
+    } catch (e) { debugPrint("Ошибка: $e"); }
   }
 
   // 18. ТУГГЛ РЕАКЦИИ
@@ -324,33 +336,158 @@ class ChatService {
         body: jsonEncode(emoji),
       );
       if (response.statusCode != 200) throw Exception("Ошибка реакции");
-    } catch (e) { print("Ошибка реакции: $e"); }
-  }
-
-  // 2. Получить историю сообщений (С ПАГИНАЦИЕЙ ПО ID)
-  Future<List<dynamic>> fetchMessages(int chatId, {int? lastMessageId, int take = 30}) async {
-    try {
-      final headers = await _getHeaders();
-      final url = lastMessageId != null 
-          ? '$baseUrl/chats/$chatId/messages?lastMessageId=$lastMessageId&take=$take'
-          : '$baseUrl/chats/$chatId/messages?take=$take';
-
-      final response = await http.get(Uri.parse(url), headers: headers);
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
-    } catch (e) { print("Ошибка загрузки сообщений: $e"); }
-    return [];
+    } catch (e) { debugPrint("Ошибка реакции: $e"); }
   }
 
   // 19. ГЛОБАЛЬНЫЙ ПОИСК СООБЩЕНИЙ
   Future<List<dynamic>> searchMessages(String query) async {
     try {
       final headers = await _getHeaders();
-      final encodedQuery = Uri.encodeQueryComponent(query);
-      final response = await http.get(Uri.parse('$baseUrl/messages/search?query=$encodedQuery'), headers: headers);
+      // Используем Uri для корректного кодирования спецсимволов в query
+      final uri = Uri.parse('$baseUrl/messages/search').replace(queryParameters: {'query': query});
+      final response = await http.get(uri, headers: headers);
       if (response.statusCode == 200) return jsonDecode(response.body);
-    } catch (e) { /* debugPrint("Ошибка поиска: $e"); */ }
+    } catch (e) { debugPrint("Ошибка поиска: $e"); }
+    return [];
+  }
+
+  // 20. ОЧИСТИТЬ ИСТОРИЮ ЧАТА (локально + на сервере)
+  Future<void> clearChatHistory(int chatId) async {
+    try {
+      final headers = await _getHeaders();
+      await http.delete(Uri.parse('$baseUrl/chats/$chatId/messages'), headers: headers);
+    } catch (e) { debugPrint("Ошибка очистки чата: $e"); }
+    // Очищаем локальный кэш
+    final box = Hive.box('messages_box');
+    await box.delete('msgs_${chatId}_0');
+  }
+
+  // 21. АВТОУДАЛЕНИЕ СООБЩЕНИЙ
+  Future<void> setAutoDelete(int chatId, int? seconds) async {
+    try {
+      final headers = await _getHeaders();
+      await http.put(
+        Uri.parse('$baseUrl/chats/$chatId/auto-delete'),
+        headers: headers,
+        body: jsonEncode({'autoDeleteSeconds': seconds}),
+      );
+    } catch (e) { debugPrint("Ошибка setAutoDelete: $e"); }
+  }
+
+  // 22. СОЗДАТЬ ОПРОС
+  Future<void> createPoll(int chatId, int userId, Map<String, dynamic> pollData) async {
+    try {
+      final headers = await _getHeaders();
+      await http.post(
+        Uri.parse('$baseUrl/chats/$chatId/polls'),
+        headers: headers,
+        body: jsonEncode(pollData),
+      );
+    } catch (e) { debugPrint("Ошибка createPoll: $e"); }
+  }
+
+  // 23. ПРОГОЛОСОВАТЬ В ОПРОСЕ
+  Future<void> votePoll(int pollId, int optionIndex) async {
+    try {
+      final headers = await _getHeaders();
+      await http.post(
+        Uri.parse('$baseUrl/polls/$pollId/vote'),
+        headers: headers,
+        body: jsonEncode({'optionIndex': optionIndex}),
+      );
+    } catch (e) { debugPrint("Ошибка votePoll: $e"); }
+  }
+
+  // 24. ОТПРАВИТЬ ФАЙЛ (документ)
+  Future<String?> uploadFile(File file) async {
+    try {
+      final token = await AuthService.getToken();
+      var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/chats/uploadMedia'));
+      if (token != null) request.headers['Authorization'] = 'Bearer $token';
+      request.files.add(await http.MultipartFile.fromPath('file', file.path));
+      var response = await request.send();
+      if (response.statusCode == 200) {
+        var data = jsonDecode(await response.stream.bytesToString());
+        return data['mediaUrl'];
+      }
+    } catch (e) { debugPrint("Ошибка uploadFile: $e"); }
+    return null;
+  }
+
+  // 25. ЧЕРНОВИКИ (локально через Hive)
+  Future<void> saveMessageDraft(int chatId, String text) async {
+    final box = Hive.isBoxOpen('drafts_box') ? Hive.box('drafts_box') : await Hive.openBox('drafts_box');
+    if (text.trim().isEmpty) {
+      await box.delete('draft_$chatId');
+    } else {
+      await box.put('draft_$chatId', text);
+    }
+  }
+
+  Future<String?> getMessageDraft(int chatId) async {
+    final box = Hive.isBoxOpen('drafts_box') ? Hive.box('drafts_box') : await Hive.openBox('drafts_box');
+    return box.get('draft_$chatId') as String?;
+  }
+
+  // 26. АРХИВ ЧАТОВ (локально через Hive)
+  Future<void> archiveChat(int chatId, bool archive) async {
+    final box = Hive.isBoxOpen('settings_box') ? Hive.box('settings_box') : await Hive.openBox('settings_box');
+    final List<dynamic> archived = List<dynamic>.from(box.get('archived_chats', defaultValue: <dynamic>[]) ?? []);
+    if (archive) {
+      if (!archived.contains(chatId)) archived.add(chatId);
+    } else {
+      archived.remove(chatId);
+    }
+    await box.put('archived_chats', archived);
+    // Уведомляем сервер (опционально)
+    try {
+      final headers = await _getHeaders();
+      await http.put(Uri.parse('$baseUrl/chats/$chatId/archive'), headers: headers, body: jsonEncode(archive));
+    } catch (_) {}
+  }
+
+  Future<List<int>> getArchivedChatIds() async {
+    final box = Hive.isBoxOpen('settings_box') ? Hive.box('settings_box') : await Hive.openBox('settings_box');
+    final raw = box.get('archived_chats', defaultValue: <dynamic>[]) ?? [];
+    return List<int>.from(raw.map((e) => e is int ? e : int.tryParse(e.toString()) ?? 0));
+  }
+
+  // 27. ИСТОРИЯ ПРАВОК СООБЩЕНИЯ
+  Future<List<dynamic>> getMessageEditHistory(dynamic messageId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('$baseUrl/messages/$messageId/history'), headers: headers);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) { debugPrint('getMessageEditHistory error: $e'); }
+    return [];
+  }
+
+  // 28. ИСТОРИЯ ЗВОНКОВ
+  Future<List<dynamic>> getCallHistory(int userId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('$baseUrl/calls/history/$userId'), headers: headers);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) { debugPrint('getCallHistory error: $e'); }
+    return [];
+  }
+
+  Future<void> clearCallHistory(int userId) async {
+    try {
+      final headers = await _getHeaders();
+      await http.delete(Uri.parse('$baseUrl/calls/history/$userId'), headers: headers);
+    } catch (e) { debugPrint('clearCallHistory error: $e'); }
+  }
+
+  // 29. ПОИСК ПОЛЬЗОВАТЕЛЕЙ (для @упоминаний)
+  Future<List<dynamic>> searchUsers(String query) async {
+    if (query.trim().isEmpty) return [];
+    try {
+      final headers = await _getHeaders();
+      final uri = Uri.parse('$baseUrl/users/search').replace(queryParameters: {'q': query, 'limit': '8'});
+      final response = await http.get(uri, headers: headers);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) { debugPrint('searchUsers error: $e'); }
     return [];
   }
 }
