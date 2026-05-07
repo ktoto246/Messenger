@@ -9,11 +9,14 @@ using System.Security.Claims;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
 using WebApplication1.Services;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 🔔 Инициализация Firebase Admin SDK
-var firebaseKeyPath = Path.Combine(builder.Environment.ContentRootPath, "veinpulse-firebase-adminsdk-fbsvc-e986d6a24e.json");
+var firebaseSettings = builder.Configuration.GetSection("Firebase");
+var firebaseKeyPath = Path.Combine(builder.Environment.ContentRootPath, firebaseSettings["KeyPath"] ?? "firebase-key.json");
 if (File.Exists(firebaseKeyPath))
 {
     FirebaseApp.Create(new AppOptions()
@@ -23,7 +26,19 @@ if (File.Exists(firebaseKeyPath))
 }
 
 builder.Services.AddSingleton<PushNotificationService>();
+builder.Services.AddSingleton<IUserIdProvider, UserIdProvider>();
 builder.Services.AddHostedService<ScheduledMessageWorker>();
+
+// --- Rate Limiting ---
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("login", opt =>
+    {
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.PermitLimit = 5;
+        opt.QueueLimit = 0;
+    });
+});
 
 // --- JWT Authentication ---
 var jwtSettings = builder.Configuration.GetSection("Jwt");
@@ -69,7 +84,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("FlutterDevPolicy", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "http://localhost:5000", "http://localhost:8080", "http://localhost:5121") // 🛡️ Список разрешенных
+        policy.SetIsOriginAllowed(origin => true) // 🛡️ В продакшне ограничить конкретными доменами!
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();           
@@ -115,8 +130,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("FlutterDevPolicy");
 
+app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.UseStaticFiles();
 
 app.MapControllers();

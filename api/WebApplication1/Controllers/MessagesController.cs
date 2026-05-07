@@ -30,7 +30,7 @@ namespace WebApplication1.Controllers
             if (string.IsNullOrWhiteSpace(newText)) return BadRequest("Текст сообщения не может быть пустым.");
 
             var message = await _context.Messages.FindAsync(messageId);
-            if (message == null) return NotFound();
+            if (message == null || message.IsDeleted) return NotFound();
 
             // 🛡️ Только автор может редактировать
             if (message.SenderUserID != CurrentUserId) return Forbid();
@@ -52,7 +52,7 @@ namespace WebApplication1.Controllers
         public async Task<IActionResult> DeleteMessage(long messageId)
         {
             var message = await _context.Messages.Include(m => m.Chat).FirstOrDefaultAsync(m => m.MessageID == messageId);
-            if (message == null) return NotFound();
+            if (message == null || message.IsDeleted) return NotFound();
 
             // 🛡️ Проверяем участие в чате
             var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == message.ChatID && cp.UserID == CurrentUserId);
@@ -79,7 +79,7 @@ namespace WebApplication1.Controllers
                 } catch { /* Игнорируем ошибки удаления файла */ }
             }
 
-            _context.Messages.Remove(message);
+            message.IsDeleted = true;
             await _context.SaveChangesAsync();
 
             return Ok(new { success = true });
@@ -90,7 +90,7 @@ namespace WebApplication1.Controllers
         public async Task<IActionResult> TogglePin(long messageId)
         {
             var message = await _context.Messages.Include(m => m.Chat).FirstOrDefaultAsync(m => m.MessageID == messageId);
-            if (message == null) return NotFound();
+            if (message == null || message.IsDeleted) return NotFound();
 
             // 🛡️ Проверяем, что юзер вообще в этом чате (ЗАЩИТА ОТ IDOR)
             var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == message.ChatID && cp.UserID == CurrentUserId);
@@ -116,7 +116,7 @@ namespace WebApplication1.Controllers
             if (string.IsNullOrWhiteSpace(emoji)) return BadRequest();
 
             var message = await _context.Messages.FindAsync(messageId);
-            if (message == null) return NotFound();
+            if (message == null || message.IsDeleted) return NotFound();
 
             // Проверяем, что юзер в этом чате
             var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == message.ChatID && cp.UserID == CurrentUserId);
@@ -160,7 +160,7 @@ namespace WebApplication1.Controllers
                 .ToListAsync();
 
             var messages = await _context.Messages
-                .Where(m => userChatIds.Contains(m.ChatID) && m.ContentText != null && m.ContentText.Contains(query))
+                .Where(m => userChatIds.Contains(m.ChatID) && !m.IsDeleted && m.ContentText != null && m.ContentText.Contains(query))
                 .OrderByDescending(m => m.SentAt)
                 .Select(m => new
                 {
@@ -213,8 +213,8 @@ namespace WebApplication1.Controllers
             if (string.IsNullOrEmpty(message.ContentText)) return BadRequest("Нет текста для перевода");
 
             // 🪄 Имитация перевода (или интеграция с внешним API)
-            // Для примера просто добавим метку
-            message.TranslatedText = "[TR] " + message.ContentText;
+            // В реальности здесь будет вызов Google Translate или DeepL
+            message.TranslatedText = "[Перевод: EN -> RU] " + message.ContentText;
             await _context.SaveChangesAsync();
 
             return Ok(new { translatedText = message.TranslatedText });
@@ -237,14 +237,31 @@ namespace WebApplication1.Controllers
             // В реальном проекте здесь будет вызов OpenAI Whisper или Google STT
             string mockTranscription = "Это расшифрованное голосовое сообщение. В реальности здесь будет текст, полученный через Whisper AI или другой сервис распознавания речи.";
             
-            // Сохраняем в TranslatedText для кэширования (если поле свободно)
-            if (string.IsNullOrEmpty(message.TranslatedText))
+            // Сохраняем в TranscriptionText для кэширования (если поле свободно)
+            if (string.IsNullOrEmpty(message.TranscriptionText))
             {
-                message.TranslatedText = mockTranscription;
+                message.TranscriptionText = mockTranscription;
                 await _context.SaveChangesAsync();
             }
 
-            return Ok(new { transcription = mockTranscription });
+            return Ok(new { transcription = message.TranscriptionText });
+        }
+
+        // GET: api/messages/5/history
+        [HttpGet("{messageId}/history")]
+        public async Task<IActionResult> GetEditHistory(long messageId)
+        {
+            var message = await _context.Messages.FindAsync(messageId);
+            if (message == null) return NotFound();
+
+            var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == message.ChatID && cp.UserID == CurrentUserId);
+            if (!isParticipant) return Forbid();
+
+            // В реальности нужна таблица MessageHistory. Имитируем:
+            return Ok(new[] {
+                new { Content = message.ContentText, EditedAt = message.SentAt.AddMinutes(5) },
+                new { Content = "Первоначальная версия сообщения", EditedAt = message.SentAt }
+            });
         }
     }
 }

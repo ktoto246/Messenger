@@ -13,6 +13,7 @@ namespace WebApplication1.Models
 
         public string ContentText { get; set; } 
         public string? TranslatedText { get; set; } // 🌍 Перевод сообщения
+        public string? TranscriptionText { get; set; } // 🎙️ Расшифровка голосового
 
         public string MessageType { get; set; } = "Text"; // Text, Image, Audio
 

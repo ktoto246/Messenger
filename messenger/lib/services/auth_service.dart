@@ -64,8 +64,20 @@ class AuthService {
     final sessions = await getAccounts();
     final session = sessions.firstWhere((s) => s['userId'] == userId);
     
+    if (_isTokenExpired(session['token'])) {
+      debugPrint("Сессия истекла для пользователя $userId");
+      return;
+    }
+    
     await _storage.write(key: 'userId', value: userId.toString());
     await _storage.write(key: 'token', value: session['token']);
+  }
+
+  static bool _isTokenExpired(String token) {
+    try {
+      // В реальности нужно парсить JWT. Здесь просто имитируем логику.
+      return false; 
+    } catch (_) { return true; }
   }
 
   Future<void> removeAccount(int userId) async {

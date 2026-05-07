@@ -26,6 +26,7 @@ namespace WebApplication1.Services
                     var now = DateTime.UtcNow;
 
                     var pendingMessages = await context.Messages
+                        .Include(m => m.SenderUser)
                         .Where(m => m.ScheduledAt != null && m.ScheduledAt <= now)
                         .ToListAsync();
 
@@ -42,7 +43,6 @@ namespace WebApplication1.Services
                         // Уведомляем клиентов через SignalR
                         foreach (var msg in pendingMessages)
                         {
-                            var sender = await context.Users.FindAsync(msg.SenderUserID);
                             await _hubContext.Clients.Group(msg.ChatID.ToString()).SendAsync("ReceiveMessage", new {
                                 msg.MessageID,
                                 msg.SenderUserID,
@@ -51,7 +51,7 @@ namespace WebApplication1.Services
                                 msg.ImageUrl,
                                 msg.MessageType,
                                 msg.ReplyToMessageId,
-                                SenderName = sender?.DisplayName,
+                                SenderName = msg.SenderUser?.DisplayName,
                                 msg.IsViewOnce
                             });
                         }

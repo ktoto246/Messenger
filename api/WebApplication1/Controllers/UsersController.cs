@@ -37,7 +37,7 @@ namespace WebApplication1.Controllers
             var usersQuery = _context.Users.AsQueryable();
             if (!string.IsNullOrWhiteSpace(query))
             {
-                usersQuery = usersQuery.Where(u => u.Username!.Contains(query) || u.Email.Contains(query) || u.DisplayName.Contains(query));
+                usersQuery = usersQuery.Where(u => u.Username!.Contains(query) || u.DisplayName.Contains(query));
             }
 
             var users = await usersQuery
@@ -60,9 +60,9 @@ namespace WebApplication1.Controllers
                 user.UserID, 
                 user.DisplayName, 
                 user.Username, 
-                PhoneNumber = isSelf || (user.PrivacyPhone == 0) ? user.PhoneNumber : null, 
+                PhoneNumber = isSelf || (!user.PrivacyPhone) ? user.PhoneNumber : null, 
                 user.Bio, 
-                AvatarUrl = isSelf || (user.PrivacyAvatar == 0) ? user.AvatarUrl : null,
+                AvatarUrl = isSelf || (!user.PrivacyAvatar) ? user.AvatarUrl : null,
                 user.IsOnline, 
                 user.LastActive, 
                 user.CreatedAt, 

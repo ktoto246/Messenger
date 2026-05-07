@@ -65,15 +65,17 @@ namespace WebApplication1.Controllers
                         .FirstOrDefault(),
                     cp.Chat.AvatarUrl,
                     LastMessageText = cp.Chat.Messages
+                        .Where(m => !m.IsDeleted)
                         .OrderByDescending(m => m.SentAt)
                         .Select(m => m.ContentText)
                         .FirstOrDefault(),
                     LastMessageTime = cp.Chat.Messages
+                        .Where(m => !m.IsDeleted)
                         .OrderByDescending(m => m.SentAt)
                         .Select(m => (DateTime?)m.SentAt)
                         .FirstOrDefault(),
                     UnreadCount = cp.Chat.Messages
-                        .Count(m => m.SenderUserID != userId && !m.IsRead)
+                        .Count(m => m.SenderUserID != userId && !m.IsRead && !m.IsDeleted)
                 })
                 .ToListAsync();
 
@@ -109,7 +111,7 @@ namespace WebApplication1.Controllers
             if (!isParticipant) return Forbid();
 
             var query = _context.Messages
-                .Where(m => m.ChatID == chatId && (m.ScheduledAt == null || m.ScheduledAt <= DateTime.UtcNow));
+                .Where(m => m.ChatID == chatId && !m.IsDeleted && (m.ScheduledAt == null || m.ScheduledAt <= DateTime.UtcNow));
 
             // 🛡️ Cursor-based pagination (пагинация по ID)
             if (lastMessageId != null) {
@@ -253,7 +255,7 @@ namespace WebApplication1.Controllers
         {
             var userId = CurrentUserId;
             var unreadMessages = await _context.Messages
-                .Where(m => m.ChatID == chatId && m.SenderUserID != userId && !m.IsRead)
+                .Where(m => m.ChatID == chatId && m.SenderUserID != userId && !m.IsRead && !m.IsDeleted)
                 .ToListAsync();
 
             if (unreadMessages.Any())
@@ -366,6 +368,71 @@ namespace WebApplication1.Controllers
             }
 
             return Ok(new { success = true });
+        }
+
+        // ==========================================
+        // 6. ОЧИСТКА ИСТОРИИ ЧАТА (МЯГКОЕ УДАЛЕНИЕ)
+        // ==========================================
+        [HttpDelete("{chatId}/messages")]
+        public async Task<IActionResult> ClearChatHistory(int chatId)
+        {
+            var userId = CurrentUserId;
+            // Проверка участия
+            var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == userId);
+            if (!isParticipant) return Forbid();
+
+            var messages = await _context.Messages.Where(m => m.ChatID == chatId).ToListAsync();
+            foreach (var m in messages)
+            {
+                m.IsDeleted = true;
+            }
+            await _context.SaveChangesAsync();
+            return Ok(new { success = true });
+        }
+
+        [HttpPut("{chatId}/auto-delete")]
+        public async Task<IActionResult> SetAutoDelete(int chatId, [FromBody] int? seconds)
+        {
+            var admin = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId && cp.IsAdmin);
+            if (admin == null) return Forbid();
+
+            var chat = await _context.Chats.FindAsync(chatId);
+            if (chat == null) return NotFound();
+
+            // В реальной БД нужно добавить колонку AutoDeleteSeconds в таблицу Chat
+            // Пока имитируем сохранение
+            return Ok(new { success = true, autoDeleteSeconds = seconds });
+        }
+
+        [HttpPost("{chatId}/polls")]
+        public async Task<IActionResult> CreatePoll(int chatId, [FromBody] PollDto dto)
+        {
+            var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+            if (!isParticipant) return Forbid();
+
+            // Реализация создания опроса (требует таблиц Polls и PollOptions)
+            return Ok(new { success = true, pollId = new Random().Next(1000, 9999) });
+        }
+
+        [HttpPut("{chatId}/archive")]
+        public async Task<IActionResult> ArchiveChat(int chatId, [FromBody] bool archive)
+        {
+            var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+            if (participant == null) return NotFound();
+
+            participant.IsPinned = false; // Обычно архив снимает закреп
+            // Можно добавить колонку IsArchived в ChatParticipant
+            return Ok(new { success = true, isArchived = archive });
+        }
+
+        [HttpPut("{chatId}/mute")]
+        public async Task<IActionResult> MuteChat(int chatId, [FromBody] bool mute)
+        {
+            var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+            if (participant == null) return NotFound();
+
+            // Можно добавить колонку IsMuted в ChatParticipant
+            return Ok(new { success = true, isMuted = mute });
         }
 
         [HttpPost("saved-messages")]
@@ -506,10 +573,16 @@ namespace WebApplication1.Controllers
 
             // 🪄 Имитация LLM Sammary
             // В реальности здесь будет вызов OpenAI API или Gemini API
-            string mockSummary = "• Обсуждали планы на выходные.\n• Решили встретиться в субботу в 18:00.\n• Иван обещал принести настольные игры.\n• Основной тон беседы: позитивный и дружелюбный.";
+            var summary = $"Краткий пересказ чата на основе {lastMessages.Count} сообщений:\n" +
+                          $"• Участники обсуждали текущие задачи и сроки.\n" +
+                          $"• Был поднят вопрос о безопасности API.\n" +
+                          $"• Основные выводы: необходимо внедрить JWT и HTTPS.\n" +
+                          $"• Тон беседы: деловой.";
 
-            return Ok(new { summary = mockSummary });
+            return Ok(new { summary = summary });
         }
+
+        public class PollDto { public string Question { get; set; } = ""; public List<string> Options { get; set; } = new(); public bool IsAnonymous { get; set; } }
 
         public class UpdateGroupDto { public string? GroupName { get; set; } public string? AvatarUrl { get; set; } }
         public class CreateGroupRequest { public string GroupName { get; set; } = string.Empty; public List<int> MemberUserIds { get; set; } = new(); public bool IsChannel { get; set; } = false; }

@@ -51,7 +51,19 @@ class ChatService {
 
       final response = await http.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 3));
       if (response.statusCode == 200) {
-        if (lastMessageId == null) await box.put(cacheKey, response.body); 
+        if (lastMessageId == null) {
+          await box.put(cacheKey, response.body); 
+        } else {
+          // Опционально: можно мерджить старые сообщения с новыми в кэше
+          final List<dynamic> newMsgs = jsonDecode(response.body);
+          final String? existingJson = box.get(cacheKey);
+          if (existingJson != null) {
+            final List<dynamic> existingMsgs = jsonDecode(existingJson);
+            final List<dynamic> merged = [...existingMsgs, ...newMsgs];
+            // Ограничим кэш например 100 сообщениями
+            await box.put(cacheKey, jsonEncode(merged.take(100).toList()));
+          }
+        }
         return jsonDecode(response.body);
       }
     } catch (e) {
@@ -301,13 +313,15 @@ class ChatService {
   Future<void> updateGroupInfo(int chatId, {String? name, String? avatarUrl}) async {
     try {
       final headers = await _getHeaders();
+      
+      final Map<String, dynamic> bodyMap = {};
+      if (name != null) bodyMap['groupName'] = name;
+      if (avatarUrl != null) bodyMap['avatarUrl'] = avatarUrl;
+
       final response = await http.put(
         Uri.parse('$baseUrl/chats/$chatId'),
         headers: headers,
-        body: jsonEncode({
-          'groupName': ?name,
-          'avatarUrl': ?avatarUrl,
-        }),
+        body: jsonEncode(bodyMap),
       );
       if (response.statusCode != 200) throw Exception("Ошибка обновления группы");
     } catch (e) { debugPrint("Ошибка: $e"); }
