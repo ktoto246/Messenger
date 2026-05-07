@@ -26,8 +26,11 @@ if (File.Exists(firebaseKeyPath))
 }
 
 builder.Services.AddSingleton<PushNotificationService>();
+builder.Services.AddSingleton<FileService>();
+builder.Services.AddSingleton<IAIService, AIServiceStub>();
 builder.Services.AddSingleton<IUserIdProvider, UserIdProvider>();
 builder.Services.AddHostedService<ScheduledMessageWorker>();
+builder.Services.AddHostedService<OnlineStatusWorker>();
 
 // --- Rate Limiting ---
 builder.Services.AddRateLimiter(options =>
@@ -91,8 +94,8 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("FlutterDevPolicy", policy =>
     {
-        // 🛡️ В продакшне ограничить конкретными доменами!
-        policy.WithOrigins("http://localhost:3000", "http://localhost:5000", "https://yourdomain.com") 
+        // 🛡️ Для разработки разрешаем любые источники, чтобы Flutter Web/Desktop могли подключаться
+        policy.SetIsOriginAllowed(origin => true) 
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();           

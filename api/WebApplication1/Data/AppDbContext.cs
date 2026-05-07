@@ -22,6 +22,7 @@ namespace WebApplication1.Data
         public DbSet<Poll> Polls { get; set; }
         public DbSet<PollOption> PollOptions { get; set; }
         public DbSet<PollVote> PollVotes { get; set; }
+        public DbSet<Call> Calls { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -77,6 +78,18 @@ namespace WebApplication1.Data
                 .HasOne(pv => pv.Option)
                 .WithMany()
                 .HasForeignKey(pv => pv.OptionID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Call>()
+                .HasOne(c => c.CallerUser)
+                .WithMany()
+                .HasForeignKey(c => c.CallerUserID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Call>()
+                .HasOne(c => c.ReceiverUser)
+                .WithMany()
+                .HasForeignKey(c => c.ReceiverUserID)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

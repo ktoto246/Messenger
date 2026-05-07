@@ -15,10 +15,14 @@ namespace WebApplication1.Controllers
     public class MessagesController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly FileService _fileService;
+        private readonly IAIService _aiService;
 
-        public MessagesController(AppDbContext context)
+        public MessagesController(AppDbContext context, FileService fileService, IAIService aiService)
         {
             _context = context;
+            _fileService = fileService;
+            _aiService = aiService;
         }
 
         private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -77,14 +81,10 @@ namespace WebApplication1.Controllers
 
             if (!canDeleteForEveryone) return Forbid();
 
-            // 🛡️ Удаление файлов с диска (если есть ImageUrl)
+            // 🛡️ Удаление файлов с диска
             if (!string.IsNullOrEmpty(message.ImageUrl))
             {
-                try {
-                    var fileName = Path.GetFileName(message.ImageUrl);
-                    var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", fileName);
-                    if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath);
-                } catch { /* Игнорируем ошибки удаления файла */ }
+                _fileService.DeleteFile(message.ImageUrl);
             }
 
             message.IsDeleted = true;
@@ -202,6 +202,13 @@ namespace WebApplication1.Controllers
             if (message.IsViewOnce && message.ViewedAt == null)
             {
                 message.ViewedAt = DateTime.UtcNow;
+                
+                // 🛡️ Физическое удаление файла сразу после просмотра
+                if (!string.IsNullOrEmpty(message.ImageUrl))
+                {
+                    _fileService.DeleteFile(message.ImageUrl);
+                }
+                
                 await _context.SaveChangesAsync();
             }
 
@@ -223,7 +230,7 @@ namespace WebApplication1.Controllers
 
             // 🪄 Имитация перевода (или интеграция с внешним API)
             // В реальности здесь будет вызов Google Translate или DeepL
-            message.TranslatedText = "[Перевод: EN -> RU] " + message.ContentText;
+            message.TranslatedText = await _aiService.TranslateAsync(message.ContentText);
             await _context.SaveChangesAsync();
 
             return Ok(new { translatedText = message.TranslatedText });
@@ -246,9 +253,7 @@ namespace WebApplication1.Controllers
                 return Ok(new { transcription = message.TranscriptionText });
 
             // 🪄 Имитация расшифровки (Speech-to-Text)
-            string mockTranscription = "Это расшифрованное голосовое сообщение. В реальности здесь будет текст, полученный через Whisper AI.";
-            
-            message.TranscriptionText = mockTranscription;
+            message.TranscriptionText = await _aiService.TranscribeAsync(message.ImageUrl ?? "");
             await _context.SaveChangesAsync();
 
             return Ok(new { transcription = message.TranscriptionText });

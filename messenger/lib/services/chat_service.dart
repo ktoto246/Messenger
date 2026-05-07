@@ -54,14 +54,20 @@ class ChatService {
         if (lastMessageId == null) {
           await box.put(cacheKey, response.body); 
         } else {
-          // Опционально: можно мерджить старые сообщения с новыми в кэше
+          // Мерджим старые сообщения с новыми в кэше
           final List<dynamic> newMsgs = jsonDecode(response.body);
           final String? existingJson = box.get(cacheKey);
           if (existingJson != null) {
             final List<dynamic> existingMsgs = jsonDecode(existingJson);
-            final List<dynamic> merged = [...existingMsgs, ...newMsgs];
-            // Ограничим кэш например 100 сообщениями
-            await box.put(cacheKey, jsonEncode(merged.take(100).toList()));
+            // Используем Map для удаления дубликатов по ID
+            final Map<int, dynamic> uniqueMsgs = {};
+            for (var m in [...existingMsgs, ...newMsgs]) {
+              uniqueMsgs[m['messageID']] = m;
+            }
+            final result = uniqueMsgs.values.toList();
+            // Сортируем по ID убыванию (новые сверху)
+            result.sort((a, b) => (b['messageID'] as int).compareTo(a['messageID'] as int));
+            await box.put(cacheKey, jsonEncode(result.take(100).toList()));
           }
         }
         return jsonDecode(response.body);
@@ -99,7 +105,7 @@ class ChatService {
   }
 
   // 3. Отправить сообщение (С ПОДДЕРЖКОЙ ОФЛАЙНА)
-  Future<void> sendMessage(int chatId, int userId, String text, {int? replyToMessageId, String? mediaUrl, String messageType = 'Text', DateTime? scheduledAt, bool isViewOnce = false}) async {
+  Future<void> sendMessage(int chatId, String text, {int? replyToMessageId, String? mediaUrl, String messageType = 'Text', DateTime? scheduledAt, bool isViewOnce = false}) async {
     final body = {
       "content": text, 
       "replyToMessageId": replyToMessageId, 
@@ -116,23 +122,43 @@ class ChatService {
         headers: headers,
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 5));
-
+ 
       if (response.statusCode == 401) throw Exception("UNAUTHORIZED");
       if (response.statusCode != 200) throw Exception("SERVER_ERROR");
     } on Exception catch (e) {
       final errStr = e.toString();
-      // Не кешируем ошибки сервера (400/500), только сетевые таймауты
       if (errStr.contains("UNAUTHORIZED")) throw Exception("SESSION_EXPIRED");
       if (errStr.contains("SERVER_ERROR")) rethrow;
+ 
       // Сетевая ошибка — сохраняем в очередь
       debugPrint("Сообщение не отправлено. Сохраняем в очередь 💾: $e");
       final box = await Hive.openBox('pending_messages');
-      await box.add({
+      final pendingMsg = {
         "chatId": chatId,
-        "userId": userId,
         "data": body,
-        "timestamp": DateTime.now().millisecondsSinceEpoch
-      });
+        "timestamp": DateTime.now().millisecondsSinceEpoch,
+        "isPending": true // 👈 Флаг для UI
+      };
+      await box.add(pendingMsg);
+ 
+      // 🪄 МГНОВЕННОЕ ОТОБРАЖЕНИЕ: Добавляем в локальный кэш сообщений чата
+      final msgBox = Hive.box('messages_box');
+      final cacheKey = 'msgs_${chatId}_0';
+      final existingJson = msgBox.get(cacheKey);
+      List<dynamic> msgs = existingJson != null ? jsonDecode(existingJson) : [];
+      
+      final fakeMsg = {
+        "messageID": -DateTime.now().millisecondsSinceEpoch, // Временный ID
+        "chatID": chatId,
+        "contentText": text,
+        "sentAt": DateTime.now().toIso8601String(),
+        "messageType": messageType,
+        "imageUrl": mediaUrl,
+        "isPending": true, // 👈 Флаг для UI
+      };
+      
+      msgs.insert(0, fakeMsg);
+      await msgBox.put(cacheKey, jsonEncode(msgs.take(50).toList()));
     }
   }
 
@@ -388,9 +414,31 @@ class ChatService {
       await http.put(
         Uri.parse('$baseUrl/chats/$chatId/auto-delete'),
         headers: headers,
-        body: jsonEncode({'autoDeleteSeconds': seconds}),
+        body: jsonEncode({'AutoDeleteSeconds': seconds}),
       );
     } catch (e) { debugPrint("Ошибка setAutoDelete: $e"); }
+  }
+
+  // 22. АРХИВАЦИЯ ЧАТА
+  Future<void> archiveChat(int chatId, bool archive) async {
+    // 1. Локально (через Hive) для мгновенного отклика UI
+    final box = Hive.isBoxOpen('settings_box') ? Hive.box('settings_box') : await Hive.openBox('settings_box');
+    final List<dynamic> archived = List<dynamic>.from(box.get('archived_chats', defaultValue: <dynamic>[]) ?? []);
+    if (archive) {
+      if (!archived.contains(chatId)) archived.add(chatId);
+    } else {
+      archived.remove(chatId);
+    }
+    await box.put('archived_chats', archived);
+
+    // 2. На сервере (через API) для синхронизации между устройствами
+    try {
+      final headers = await _getHeaders();
+      await http.post(
+        Uri.parse('$baseUrl/chats/$chatId/archive?archive=$archive'),
+        headers: headers,
+      );
+    } catch (e) { debugPrint("Ошибка архивации на сервере: $e"); }
   }
 
   // 22. СОЗДАТЬ ОПРОС
@@ -448,22 +496,7 @@ class ChatService {
     return box.get('draft_$chatId') as String?;
   }
 
-  // 26. АРХИВ ЧАТОВ (локально через Hive)
-  Future<void> archiveChat(int chatId, bool archive) async {
-    final box = Hive.isBoxOpen('settings_box') ? Hive.box('settings_box') : await Hive.openBox('settings_box');
-    final List<dynamic> archived = List<dynamic>.from(box.get('archived_chats', defaultValue: <dynamic>[]) ?? []);
-    if (archive) {
-      if (!archived.contains(chatId)) archived.add(chatId);
-    } else {
-      archived.remove(chatId);
-    }
-    await box.put('archived_chats', archived);
-    // Уведомляем сервер (опционально)
-    try {
-      final headers = await _getHeaders();
-      await http.put(Uri.parse('$baseUrl/chats/$chatId/archive'), headers: headers, body: jsonEncode(archive));
-    } catch (_) {}
-  }
+    // Метод перенесен выше и объединен (п. 22)
 
   Future<List<int>> getArchivedChatIds() async {
     final box = Hive.isBoxOpen('settings_box') ? Hive.box('settings_box') : await Hive.openBox('settings_box');

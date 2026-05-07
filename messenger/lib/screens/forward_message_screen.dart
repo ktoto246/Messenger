@@ -71,13 +71,13 @@ class _ForwardMessageScreenState extends State<ForwardMessageScreen> {
       try {
         if (widget.mediaUrlToForward != null) {
           await _chatService.sendMessage(
-            chatId, widget.currentUserId,
+            chatId,
             widget.textToForward,
             mediaUrl: widget.mediaUrlToForward,
             messageType: 'Media',
           );
         } else {
-          await _chatService.sendMessage(chatId, widget.currentUserId, widget.textToForward);
+          await _chatService.sendMessage(chatId, widget.textToForward);
         }
       } catch (e) {
         debugPrint('Forward error: $e');

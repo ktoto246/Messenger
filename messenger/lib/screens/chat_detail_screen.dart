@@ -286,7 +286,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (!mounted) return;
     if (mediaUrl != null) {
       int? replyId = _replyingToMessage != null ? (_replyingToMessage['messageID'] ?? _replyingToMessage['MessageID']) : null;
-      await _chatService.sendMessage(widget.chatId, widget.currentUserId, "", replyToMessageId: replyId, mediaUrl: mediaUrl, messageType: messageType);
+      await _chatService.sendMessage(widget.chatId, "", replyToMessageId: replyId, mediaUrl: mediaUrl, messageType: messageType);
       _cancelAction();
       await _loadMessages(isRefresh: true);
       _safeSignalRSend("ReceiveMessage", []);
@@ -307,6 +307,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             // \u0412\u044b\u0437\u044b\u0432\u0430\u0435\u043c getToken \u0434\u0438\u043d\u0430\u043c\u0438\u0447\u0435\u0441\u043a\u0438 \u043f\u0440\u0438 \u043a\u0430\u0436\u0434\u043e\u043c \u0437\u0430\u043f\u0440\u043e\u0441\u0435, \u0447\u0442\u043e\u0431\u044b \u043d\u0435 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u044c \u0443\u0441\u0442\u0430\u0440\u0435\u0432\u0448\u0438\u0439 \u0442\u043e\u043a\u0435\u043d\n            accessTokenFactory: () => AuthService.getToken().then((t) => t ?? ''),
           ),
         )
+        .withAutomaticReconnect()
         .build();
     _hubConnection?.on("UserTyping", (args) {
       if (args != null && args.length > 1 && (args[1] as int) != widget.currentUserId) { 
@@ -437,7 +438,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final mediaUrl = await _chatService.uploadFile(file);
     if (!mounted) return;
     if (mediaUrl != null) {
-      await _chatService.sendMessage(widget.chatId, widget.currentUserId, fileName, mediaUrl: mediaUrl, messageType: 'File');
+      await _chatService.sendMessage(widget.chatId, fileName, mediaUrl: mediaUrl, messageType: 'File');
       await _loadMessages(isRefresh: true);
       _safeSignalRSend("ReceiveMessage", []);
     } else {
@@ -570,7 +571,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           finalContent = SecretChatService.encrypt(text, widget.chatId.toString());
         }
         await _chatService.sendMessage(
-          widget.chatId, widget.currentUserId, finalContent,
+          widget.chatId, finalContent,
           replyToMessageId: replyId,
           messageType: "Text",
           scheduledAt: _scheduledAt,
@@ -610,7 +611,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (gif != null && gif.images?.original?.url != null) {
       final gifUrl = gif.images!.original!.url;
       // Отправляем как изображение
-      await _chatService.sendMessage(widget.chatId, widget.currentUserId, "", messageType: "Image", mediaUrl: gifUrl);
+      await _chatService.sendMessage(widget.chatId, "", messageType: "Image", mediaUrl: gifUrl);
       await _loadMessages(isRefresh: true);
       _safeSignalRSend("ReceiveMessage", []);
     }
@@ -690,7 +691,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _sendSticker(String stickerUrl) async {
-    await _chatService.sendMessage(widget.chatId, widget.currentUserId, "", messageType: "Sticker", mediaUrl: stickerUrl);
+    await _chatService.sendMessage(widget.chatId, "", messageType: "Sticker", mediaUrl: stickerUrl);
     await _loadMessages(isRefresh: true);
     _safeSignalRSend("ReceiveMessage", []);
   }
@@ -918,7 +919,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     Position position = await Geolocator.getCurrentPosition();
     if (!mounted) return;
     final locationString = "${position.latitude},${position.longitude}";
-    await _chatService.sendMessage(widget.chatId, widget.currentUserId, locationString, messageType: "Location");
+    await _chatService.sendMessage(widget.chatId, locationString, messageType: "Location");
     await _loadMessages(isRefresh: true);
     _safeSignalRSend("ReceiveMessage", []);
   }

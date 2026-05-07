@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/screens/main_screen.dart';
+import 'main_screen.dart';
 import '../services/auth_service.dart';
 import '../services/chat_service.dart'; 
 import '../widgets/custom_button.dart';
 import '../widgets/custom_input.dart';
 import '../main.dart'; 
+import '../utils/ui_utils.dart';
 import 'package:hive/hive.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -21,54 +22,18 @@ class _LoginScreenState extends State<LoginScreen> {
   final _chatService = ChatService(); 
   bool _isLoading = false;
 
-  // 🪄 ПРЕМИУМ УВЕДОМЛЕНИЯ АДАПТИВНЫЕ ПОД ТЕМУ (КАК В РЕГИСТРАЦИИ) 🪄
-  void _showCustomMessage(String message, {int type = 0}) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // Мягкие цвета для ночи, классические для дня
-    Color iconColor = type == 1 ? (isDark ? const Color(0xFF32D74B) : Colors.green) 
-                    : (type == 2 ? (isDark ? const Color(0xFFFF453A) : Colors.red) 
-                    : (isDark ? const Color(0xFFFF9F0A) : Colors.orange));
-    
-    Color bgColor = isDark ? const Color(0xFF2C2C2E) : Colors.white;
-    Color textColor = isDark ? Colors.white : Colors.black87;
-
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(type == 1 ? Icons.check_circle : (type == 2 ? Icons.error : Icons.warning_rounded), color: iconColor, size: 28),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message, style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w500))),
-          ],
-        ),
-        backgroundColor: bgColor,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        margin: const EdgeInsets.only(bottom: 30, left: 20, right: 20),
-        elevation: isDark ? 0 : 8,
-      ),
-    );
-  }
-
- void _login() async {
+  void _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      _showCustomMessage('Пожалуйста, заполните почту и пароль', type: 0);
+      UIUtils.showSnackBar(context, 'Пожалуйста, заполните почту и пароль', isError: true);
       return;
     }
 
     final emailRegex = RegExp(r'^[\w\.-]+@[\w\.-]+\.\w{2,}$');
     if (!emailRegex.hasMatch(email)) {
-      _showCustomMessage('Введите корректный Email адрес', type: 2);
-      return;
-    }
-
-    if (password.length < 6) {
-      _showCustomMessage('Пароль должен содержать минимум 6 символов', type: 2);
+      UIUtils.showSnackBar(context, 'Введите корректный Email адрес', isError: true);
       return;
     }
 
@@ -78,7 +43,6 @@ class _LoginScreenState extends State<LoginScreen> {
       final success = await _authService.login(email, password);
       
       if (success) {
-        // Загружаем тему
         final userId = await _authService.getCurrentUserId();
         if (userId != null) {
           final profile = await _chatService.getUserProfile(userId);
@@ -98,16 +62,15 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } else {
         if (mounted) {
-          _showCustomMessage('Неверный логин или пароль 🚫', type: 2);
+          UIUtils.showSnackBar(context, 'Неверный логин или пароль 🚫', isError: true);
         }
       }
     } catch (e) {
       if (mounted) {
-        // 👇 ТЕПЕРЬ ОН ТОЧНО ЗНАЕТ, ЧТО НЕТ СЕТИ 👇
         if (e.toString().contains('NETWORK_ERROR')) {
-          _showCustomMessage('Нет связи с сервером. Проверьте интернет 🌐', type: 2);
+          UIUtils.showSnackBar(context, 'Нет связи с сервером. Проверьте интернет 🌐', isError: true);
         } else {
-          _showCustomMessage('Произошла ошибка. Попробуйте позже.', type: 2);
+          UIUtils.showSnackBar(context, 'Произошла ошибка. Попробуйте позже.', isError: true);
         }
       }
     } finally {
@@ -115,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
- @override
+  @override
   Widget build(BuildContext context) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
     Color textColor = isDark ? Colors.white : Colors.black;
@@ -132,8 +95,13 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'Hello.',
-                style: TextStyle(fontSize: 45, fontWeight: FontWeight.w900, color: textColor, fontFamily: 'SF Pro'),
+                'Вход',
+                style: TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: textColor, fontFamily: 'SF Pro'),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'С возвращением!',
+                style: TextStyle(fontSize: 16, color: hintColor),
               ),
               const SizedBox(height: 40),
 
@@ -151,21 +119,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 child: Column(
                   children: [
-                    CustomInputField(hintText: 'E-Mail', isPassword: false, controller: _emailController, iconData: Icons.email_outlined),
+                    CustomInputField(hintText: 'Почта', isPassword: false, controller: _emailController, iconData: Icons.email_outlined),
                     const SizedBox(height: 16), 
-                    CustomInputField(hintText: 'Password', isPassword: true, controller: _passwordController, iconData: Icons.lock_outline),
+                    CustomInputField(hintText: 'Пароль', isPassword: true, controller: _passwordController, iconData: Icons.lock_outline),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 30),
-
-              CustomButton(
-                text: 'Зарегистрироваться',
-                color: const Color(0xFF0088FF),
-                width: double.infinity,
-                height: 55,
-                onTap: () => Navigator.pushNamed(context, '/register'),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () {
+                    UIUtils.showCustomMessage(context, "Сброс пароля", "Функция восстановления пароля будет доступна в следующем обновлении.");
+                  },
+                  child: const Text('Забыли пароль?'),
+                ),
               ),
 
               const SizedBox(height: 20),
@@ -179,6 +147,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       height: 55,
                       onTap: _login,
                     ),
+
+              const SizedBox(height: 16),
+
+              TextButton(
+                onPressed: () => Navigator.pushNamed(context, '/register'),
+                child: Text('Нет аккаунта? Зарегистрироваться', style: TextStyle(color: textColor)),
+              ),
             ],
           ),
         ),

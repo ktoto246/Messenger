@@ -33,5 +33,9 @@ namespace WebApplication1.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public string? FcmToken { get; set; } // 🔔 Для Push-уведомлений
+
+        // 📍 Геолокация для функции "Люди рядом"
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
     }
 }

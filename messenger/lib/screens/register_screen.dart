@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/screens/main_screen.dart'; // Добавили для перехода в чат
+import 'main_screen.dart';
 import '../services/auth_service.dart';
-import '../services/chat_service.dart'; // Добавили для темы
+import '../services/chat_service.dart'; 
 import '../widgets/custom_button.dart';
 import '../widgets/custom_input.dart';
 import '../main.dart';
+import '../utils/ui_utils.dart';
 import 'package:hive/hive.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -24,38 +25,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _chatService = ChatService();
   bool _isLoading = false;
 
-  // 🪄 ПРЕМИУМ УВЕДОМЛЕНИЯ АДАПТИВНЫЕ ПОД ТЕМУ 🪄
-  void _showCustomMessage(String message, {int type = 0}) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    // Цвета в стиле Apple (мягкие неоновые для ночи, классические для дня)
-    Color iconColor = type == 1 ? (isDark ? const Color(0xFF32D74B) : Colors.green) 
-                    : (type == 2 ? (isDark ? const Color(0xFFFF453A) : Colors.red) 
-                    : (isDark ? const Color(0xFFFF9F0A) : Colors.orange));
-    
-    // Фон плашки: темно-серый ночью, белый днем
-    Color bgColor = isDark ? const Color(0xFF2C2C2E) : Colors.white;
-    Color textColor = isDark ? Colors.white : Colors.black87;
-
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(type == 1 ? Icons.check_circle : (type == 2 ? Icons.error : Icons.warning_rounded), color: iconColor, size: 28),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message, style: TextStyle(color: textColor, fontSize: 15, fontWeight: FontWeight.w500))),
-          ],
-        ),
-        backgroundColor: bgColor,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        margin: const EdgeInsets.only(bottom: 30, left: 20, right: 20),
-        elevation: isDark ? 0 : 8, // Убираем тень ночью для стиля
-      ),
-    );
-  }
-
   void _register() async {
     final username = _usernameController.text.trim();
     final email = _emailController.text.trim();
@@ -63,18 +32,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final displayName = _displayNameController.text.trim();
 
     if (username.isEmpty || email.isEmpty || password.isEmpty || displayName.isEmpty) {
-      _showCustomMessage('Заполните все поля', type: 0);
+      UIUtils.showSnackBar(context, 'Пожалуйста, заполните все поля', isError: true);
+      return;
+    }
+
+    if (username.length < 3) {
+      UIUtils.showSnackBar(context, 'Логин слишком короткий (минимум 3 символа)', isError: true);
       return;
     }
 
     final emailRegex = RegExp(r'^[\w\.-]+@[\w\.-]+\.\w{2,}$');
     if (!emailRegex.hasMatch(email)) {
-      _showCustomMessage('Введите корректный Email адрес', type: 2);
+      UIUtils.showSnackBar(context, 'Введите корректный Email адрес', isError: true);
       return;
     }
 
-    if (password.length < 6) {
-      _showCustomMessage('Пароль должен содержать минимум 6 символов', type: 2);
+    if (password.length < 8) {
+      UIUtils.showSnackBar(context, 'Пароль должен содержать минимум 8 символов для безопасности', isError: true);
       return;
     }
 
@@ -86,17 +60,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         password,
         displayName,
         username, 
-      ).timeout(const Duration(seconds: 5));
+      );
       
-      setState(() => _isLoading = false);
-
       if (success && mounted) {
-        _showCustomMessage('Успешно! Заходим...', type: 1);
+        UIUtils.showSnackBar(context, 'Успешная регистрация! Входим...', isError: false);
         
-        // Автоматически логинимся после регистрации (чтобы получить ID и зайти)
-        await _authService.login(_emailController.text, _passwordController.text);
+        await _authService.login(email, password);
         
-        // Синхронизируем тему
         final userId = await _authService.getCurrentUserId();
         if (userId != null) {
           final profile = await _chatService.getUserProfile(userId);
@@ -108,22 +78,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
           }
         }
 
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            // 👇 ПУСКАЕМ СРАЗУ В ЧАТ 👇
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (context) => const MainScreen()),
-              (route) => false // Очищаем историю, чтобы по кнопке "Назад" не выкинуло на регистрацию
-            );
-          }
-        });
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const MainScreen()),
+            (route) => false
+          );
+        }
 
       } else if (mounted) {
-        _showCustomMessage('Логин или Email уже заняты.', type: 2);
+        UIUtils.showSnackBar(context, 'Этот логин или Email уже заняты.', isError: true);
       }
     } catch (e) {
-      setState(() => _isLoading = false);
-      if (mounted) _showCustomMessage('Ошибка соединения 🌐', type: 2);
+      if (mounted) UIUtils.showSnackBar(context, 'Ошибка соединения 🌐', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -143,7 +111,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('Hello.', style: TextStyle(fontSize: 45, fontWeight: FontWeight.w900, color: textColor, fontFamily: 'SF Pro')),
+              Text('Регистрация', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: textColor, fontFamily: 'SF Pro')),
+              const SizedBox(height: 10),
+              Text('Создайте новый аккаунт VEIN', style: TextStyle(fontSize: 16, color: hintColor)),
               const SizedBox(height: 30),
 
               Theme(
@@ -159,11 +129,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   children: [
                     CustomInputField(hintText: 'Логин', isPassword: false, controller: _usernameController, iconData: Icons.alternate_email),
                     const SizedBox(height: 16),
-                    CustomInputField(hintText: 'E-Mail', isPassword: false, controller: _emailController, iconData: Icons.email_outlined),
-                    const SizedBox(height: 16),
-                    CustomInputField(hintText: 'Пароль', isPassword: true, controller: _passwordController, iconData: Icons.lock_outline),
+                    CustomInputField(hintText: 'Почта (Email)', isPassword: false, controller: _emailController, iconData: Icons.email_outlined),
                     const SizedBox(height: 16),
                     CustomInputField(hintText: 'Отображаемое имя', isPassword: false, controller: _displayNameController, iconData: Icons.person_outline),
+                    const SizedBox(height: 16),
+                    CustomInputField(hintText: 'Пароль', isPassword: true, controller: _passwordController, iconData: Icons.lock_outline),
                   ],
                 ),
               ),
@@ -172,11 +142,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
               _isLoading
                   ? const CircularProgressIndicator()
-                  : CustomButton(text: 'Зарегистрироваться', color: const Color(0xFF0088FF), width: double.infinity, height: 55, onTap: _register),
+                  : CustomButton(text: 'Создать аккаунт', color: const Color(0xFF0088FF), width: double.infinity, height: 55, onTap: _register),
               
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
-              CustomButton(text: 'Уже есть аккаунт? Войдите.', color: const Color(0xFF0088FF), width: double.infinity, height: 55, onTap: () => Navigator.pop(context)),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Уже есть аккаунт? Войти', style: TextStyle(color: textColor)),
+              ),
             ],
           ),
         ),

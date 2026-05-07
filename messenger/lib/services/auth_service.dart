@@ -62,15 +62,19 @@ class AuthService {
 
   Future<void> switchAccount(int userId) async {
     final sessions = await getAccounts();
-    final session = sessions.firstWhere((s) => s['userId'] == userId);
+    final session = sessions.firstWhere(
+      (s) => s['userId'] == userId,
+      orElse: () => throw Exception('ACCOUNT_NOT_FOUND'),
+    );
     
     if (_isTokenExpired(session['token'])) {
       debugPrint("Сессия истекла для пользователя $userId");
-      return;
+      throw Exception('SESSION_EXPIRED');
     }
     
     await _storage.write(key: 'userId', value: userId.toString());
     await _storage.write(key: 'token', value: session['token']);
+    startHeartbeat(); // Перезапускаем heartbeat для нового юзера
   }
 
   static bool _isTokenExpired(String token) {
@@ -141,6 +145,24 @@ class AuthService {
     await _storage.delete(key: 'token');
   }
 
+  Timer? _heartbeatTimer;
+ 
+  void startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(minutes: 2), (timer) async {
+      final userId = await getCurrentUserId();
+      if (userId != null) {
+        await updateOnlineStatus(true);
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+ 
+  void stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+  }
+ 
   Future<void> updateOnlineStatus(bool isOnline) async {
     try {
       final token = await getToken();

@@ -365,7 +365,6 @@ class _StoryViewScreenState extends State<StoryViewScreen>
                                         if (chatId != null) {
                                           await _chatService.sendMessage(
                                             chatId, 
-                                            currentUserId, 
                                             "Ответ на историю: $text",
                                             mediaUrl: rawUrl, // Ссылка на саму историю
                                             messageType: "Text"

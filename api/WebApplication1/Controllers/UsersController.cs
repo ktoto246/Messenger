@@ -100,5 +100,65 @@ namespace WebApplication1.Controllers
             await _context.SaveChangesAsync();
             return Ok(new { Message = "Profile updated successfully" });
         }
+
+        [HttpPost("nearby")]
+        public async Task<IActionResult> GetNearbyUsers([FromBody] LocationDto location)
+        {
+            var user = await _context.Users.FindAsync(CurrentUserId);
+            if (user != null)
+            {
+                user.Latitude = location.Latitude;
+                user.Longitude = location.Longitude;
+                user.LastActive = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+
+            // Ищем пользователей в радиусе 10км
+            var nearbyUsers = await _context.Users
+                .Where(u => u.UserID != CurrentUserId && u.Latitude != null && u.Longitude != null)
+                .ToListAsync();
+
+            var result = nearbyUsers
+                .Select(u => new
+                {
+                    UserID = u.UserID,
+                    DisplayName = u.DisplayName,
+                    AvatarUrl = u.AvatarUrl,
+                    IsOnline = u.IsOnline,
+                    DistanceMeters = CalculateDistance(location.Latitude, location.Longitude, u.Latitude!.Value, u.Longitude!.Value)
+                })
+                .Where(u => u.DistanceMeters <= (location.RadiusKm * 1000)) 
+                .OrderBy(u => u.DistanceMeters)
+                .ToList();
+
+            return Ok(result);
+        }
+
+        private double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
+        {
+            var d1 = lat1 * (Math.PI / 180.0);
+            var num1 = lon1 * (Math.PI / 180.0);
+            var d2 = lat2 * (Math.PI / 180.0);
+            var num2 = lon2 * (Math.PI / 180.0) - num1;
+            var d3 = Math.Pow(Math.Sin((d2 - d1) / 2.0), 2.0) + Math.Cos(d1) * Math.Cos(d2) * Math.Pow(Math.Sin(num2 / 2.0), 2.0);
+            return 6371000.0 * (2.0 * Math.Atan2(Math.Sqrt(d3), Math.Sqrt(1.0 - d3)));
+        }
+
+        public class LocationDto { public double Latitude { get; set; } public double Longitude { get; set; } public double RadiusKm { get; set; } = 10; }
+
+        public class UserUpdateDto
+        {
+            public string? DisplayName { get; set; }
+            public string? Bio { get; set; }
+            public string? AvatarUrl { get; set; }
+            public string? FcmToken { get; set; }
+            public string? ThemeColor { get; set; }
+            public DateTime? DateOfBirth { get; set; }
+            public string? MusicUrl { get; set; }
+            public bool? IsDarkMode { get; set; }
+            public bool? PrivacyPhone { get; set; }
+            public bool? PrivacyAvatar { get; set; }
+            public bool? PrivacyMessages { get; set; }
+        }
     }
 }

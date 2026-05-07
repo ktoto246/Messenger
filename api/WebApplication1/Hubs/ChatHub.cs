@@ -18,6 +18,42 @@ namespace WebApplication1.Hubs
 
         private int CurrentUserId => int.Parse(Context.User!.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
+        public override async Task OnConnectedAsync()
+        {
+            var user = await _context.Users.FindAsync(CurrentUserId);
+            if (user != null)
+            {
+                user.IsOnline = true;
+                user.LastActive = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+            await base.OnConnectedAsync();
+        }
+
+        public override async Task OnDisconnectedAsync(Exception? exception)
+        {
+            var user = await _context.Users.FindAsync(CurrentUserId);
+            if (user != null)
+            {
+                // Мы не сбрасываем IsOnline сразу, так как может быть переподключение
+                // Но для простоты пока сбросим. OnlineStatusWorker подстрахует.
+                user.IsOnline = false;
+                user.LastActive = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+            await base.OnDisconnectedAsync(exception);
+        }
+
+        public async Task Heartbeat()
+        {
+            var user = await _context.Users.FindAsync(CurrentUserId);
+            if (user != null)
+            {
+                user.LastActive = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+        }
+
         public async Task JoinChat(string chatIdStr)
         {
             if (int.TryParse(chatIdStr, out int chatId))
@@ -71,16 +107,34 @@ namespace WebApplication1.Hubs
         {
             if (int.TryParse(chatIdStr, out int chatId))
             {
-                var isParticipant = await _context.ChatParticipants
-                    .AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+                var participant = await _context.ChatParticipants
+                    .FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
 
-                if (isParticipant)
+                if (participant != null)
                 {
                     var msg = await _context.Messages.FindAsync(messageId);
                     if (msg != null && msg.ChatID == chatId)
                     {
-                        msg.IsRead = true;
-                        msg.ReadAt = DateTime.UtcNow;
+                        // 1. Помечаем само сообщение как прочитанное (только для личек)
+                        var chat = await _context.Chats.FindAsync(chatId);
+                        if (chat != null && !chat.IsGroup)
+                        {
+                            msg.IsRead = true;
+                            msg.ReadAt = DateTime.UtcNow;
+                        }
+
+                        // 2. Обновляем курсор прочтения пользователя
+                        if (participant.LastReadMessageId < messageId)
+                        {
+                            participant.LastReadMessageId = messageId;
+                        }
+
+                        // 3. Добавляем ReadReceipt (для групп)
+                        if (!await _context.ReadReceipts.AnyAsync(rr => rr.MessageID == messageId && rr.UserID == CurrentUserId))
+                        {
+                            _context.ReadReceipts.Add(new ReadReceipt { MessageID = messageId, UserID = CurrentUserId });
+                        }
+
                         await _context.SaveChangesAsync();
                         await Clients.Group(chatIdStr).SendAsync("MessageRead", messageId);
                     }

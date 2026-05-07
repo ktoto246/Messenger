@@ -86,4 +86,25 @@ namespace WebApplication1.Models
         [ForeignKey("UserID")]
         public virtual User User { get; set; }
     }
+
+    public class Call
+    {
+        [Key]
+        public int CallID { get; set; }
+
+        public int CallerUserID { get; set; }
+        [ForeignKey("CallerUserID")]
+        public virtual User CallerUser { get; set; }
+
+        public int ReceiverUserID { get; set; }
+        [ForeignKey("ReceiverUserID")]
+        public virtual User ReceiverUser { get; set; }
+
+        [Required]
+        public string Status { get; set; } // "Initiated", "Accepted", "Rejected", "Missed", "Ended"
+        public int Duration { get; set; } // in seconds
+        public bool IsVideo { get; set; }
+        public DateTime StartedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? EndedAt { get; set; }
+    }
 }

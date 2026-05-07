@@ -22,13 +22,17 @@ namespace WebApplication1.Controllers
         private readonly PushNotificationService _pushService;
         private readonly Microsoft.AspNetCore.SignalR.IHubContext<WebApplication1.Hubs.ChatHub> _hubContext;
         private readonly IServiceScopeFactory _scopeFactory;
+        private readonly FileService _fileService;
+        private readonly IAIService _aiService;
 
-        public ChatsController(AppDbContext context, PushNotificationService pushService, Microsoft.AspNetCore.SignalR.IHubContext<WebApplication1.Hubs.ChatHub> hubContext, IServiceScopeFactory scopeFactory)
+        public ChatsController(AppDbContext context, PushNotificationService pushService, Microsoft.AspNetCore.SignalR.IHubContext<WebApplication1.Hubs.ChatHub> hubContext, IServiceScopeFactory scopeFactory, FileService fileService, IAIService aiService)
         {
             _context = context;
             _pushService = pushService;
             _hubContext = hubContext;
             _scopeFactory = scopeFactory;
+            _fileService = fileService;
+            _aiService = aiService;
         }
 
         // Хелпер для получения ID текущего пользователя из JWT
@@ -279,7 +283,21 @@ namespace WebApplication1.Controllers
             {
                 participant.LastReadMessageId = lastMessage.MessageID;
                 
-                // Для групп добавляем ReadReceipt
+                // 1. Помечаем сообщения в личках как прочитанные
+                var chat = await _context.Chats.FindAsync(chatId);
+                if (chat != null && !chat.IsGroup)
+                {
+                    var unreadMessages = await _context.Messages
+                        .Where(m => m.ChatID == chatId && m.SenderUserID != userId && !m.IsRead)
+                        .ToListAsync();
+                    
+                    foreach(var m in unreadMessages) { 
+                        m.IsRead = true; 
+                        m.ReadAt = DateTime.UtcNow; 
+                    }
+                }
+
+                // 2. Добавляем ReadReceipt (для групп)
                 if (!await _context.ReadReceipts.AnyAsync(rr => rr.MessageID == lastMessage.MessageID && rr.UserID == userId))
                 {
                     _context.ReadReceipts.Add(new ReadReceipt { MessageID = lastMessage.MessageID, UserID = userId });
@@ -298,6 +316,9 @@ namespace WebApplication1.Controllers
         public async Task<IActionResult> CreatePrivateChat([FromBody] int targetUserId)
         {
             var currentUserId = CurrentUserId;
+
+            if (targetUserId == currentUserId) 
+                return BadRequest("Нельзя создать приватный чат с самим собой. Используйте 'Избранное'.");
 
             var targetUserExists = await _context.Users.AnyAsync(u => u.UserID == targetUserId);
             if (!targetUserExists) return BadRequest("Пользователь не найден");
@@ -342,17 +363,27 @@ namespace WebApplication1.Controllers
                  return BadRequest("Контент файла не соответствует медиа-типу");
             }
 
-            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
-            if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
-            
             var uniqueFileName = Guid.NewGuid().ToString() + extension;
-            var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+            var filePath = _fileService.GetFilePath(uniqueFileName);
 
             using (var stream = new FileStream(filePath, FileMode.Create))
             {
                 await file.CopyToAsync(stream);
             }
-            return Ok(new { mediaUrl = $"/uploads/{uniqueFileName}" });
+            return Ok(new { mediaUrl = $"/api/media/{uniqueFileName}" });
+        }
+
+        [HttpPost("{chatId}/archive")]
+        public async Task<IActionResult> ArchiveChat(int chatId, [FromQuery] bool archive)
+        {
+            var participant = await _context.ChatParticipants
+                .FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+
+            if (participant == null) return NotFound();
+
+            participant.IsArchived = archive;
+            await _context.SaveChangesAsync();
+            return Ok(new { isArchived = archive });
         }
 
         [HttpPut("{chatId}/pin")]
@@ -425,7 +456,7 @@ namespace WebApplication1.Controllers
         }
 
         [HttpPut("{chatId}/auto-delete")]
-        public async Task<IActionResult> SetAutoDelete(int chatId, [FromBody] int? seconds)
+        public async Task<IActionResult> SetAutoDelete(int chatId, [FromBody] AutoDeleteDto dto)
         {
             var admin = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId && cp.IsAdmin);
             if (admin == null) return Forbid();
@@ -433,9 +464,14 @@ namespace WebApplication1.Controllers
             var chat = await _context.Chats.FindAsync(chatId);
             if (chat == null) return NotFound();
 
-            chat.AutoDeleteSeconds = seconds;
+            chat.AutoDeleteSeconds = dto.AutoDeleteSeconds;
             await _context.SaveChangesAsync();
-            return Ok(new { success = true, autoDeleteSeconds = seconds });
+            return Ok(new { success = true, autoDeleteSeconds = dto.AutoDeleteSeconds });
+        }
+
+        public class AutoDeleteDto
+        {
+            public int? AutoDeleteSeconds { get; set; }
         }
 
         [HttpPost("{chatId}/polls")]
@@ -632,13 +668,8 @@ namespace WebApplication1.Controllers
             if (lastMessages.Count < 5) 
                 return BadRequest("Недостаточно сообщений для создания саммари (нужно минимум 5).");
 
-            // 🪄 Имитация LLM Sammary
-            // В реальности здесь будет вызов OpenAI API или Gemini API
-            var summary = $"Краткий пересказ чата на основе {lastMessages.Count} сообщений:\n" +
-                          $"• Участники обсуждали текущие задачи и сроки.\n" +
-                          $"• Был поднят вопрос о безопасности API.\n" +
-                          $"• Основные выводы: необходимо внедрить JWT и HTTPS.\n" +
-                          $"• Тон беседы: деловой.";
+            // 🪄 Использование AI сервиса
+            var summary = await _aiService.SummarizeAsync(lastMessages);
 
             return Ok(new { summary = summary });
         }

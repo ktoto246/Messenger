@@ -26,11 +26,23 @@ namespace WebApplication1.Controllers
         {
             if (userId != CurrentUserId) return Forbid();
 
-            // В реальности нужна таблица Calls. Имитируем:
-            return Ok(new[] {
-                new { CallId = 1, OtherUser = "Алексей", Type = "Incoming", Duration = 120, Time = DateTime.UtcNow.AddHours(-2) },
-                new { CallId = 2, OtherUser = "Мария", Type = "Outgoing", Duration = 45, Time = DateTime.UtcNow.AddDays(-1) }
-            });
+            var calls = await _context.Calls
+                .Where(c => c.CallerUserID == userId || c.ReceiverUserID == userId)
+                .OrderByDescending(c => c.StartedAt)
+                .Select(c => new {
+                    c.CallID,
+                    OtherUser = c.CallerUserID == userId ? c.ReceiverUser.DisplayName : c.CallerUser.DisplayName,
+                    OtherUserId = c.CallerUserID == userId ? c.ReceiverUserID : c.CallerUserID,
+                    Type = c.CallerUserID == userId ? "Outgoing" : "Incoming",
+                    c.Status,
+                    c.Duration,
+                    Time = c.StartedAt,
+                    c.IsVideo
+                })
+                .Take(50)
+                .ToListAsync();
+
+            return Ok(calls);
         }
 
         // DELETE: api/calls/history/5
@@ -39,7 +51,13 @@ namespace WebApplication1.Controllers
         {
             if (userId != CurrentUserId) return Forbid();
 
-            // Логика очистки истории звонков
+            var userCalls = await _context.Calls
+                .Where(c => c.CallerUserID == userId || c.ReceiverUserID == userId)
+                .ToListAsync();
+
+            _context.Calls.RemoveRange(userCalls);
+            await _context.SaveChangesAsync();
+
             return Ok(new { success = true });
         }
     }

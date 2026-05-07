@@ -63,6 +63,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver { /
     _currentUserId = await _authService.getCurrentUserId();
     if (_currentUserId != null) {
       _authService.updateOnlineStatus(true);
+      _authService.startHeartbeat();
       
       // 🔔 ПОЛУЧАЕМ И ОБНОВЛЯЕМ ТОКЕН ДЛЯ ПУШЕЙ
       try {
