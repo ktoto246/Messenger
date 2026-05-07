@@ -189,7 +189,12 @@ class _CreatePollScreenState extends State<CreatePollScreen> {
       child: Row(
         children: [
           Expanded(child: Text(title, style: const TextStyle(fontSize: 15))),
-          Switch.adaptive(value: value, onChanged: onChanged, activeColor: Colors.blue),
+          Switch.adaptive(
+            value: value, 
+            onChanged: onChanged, 
+            activeTrackColor: Colors.blue.withValues(alpha: 0.5),
+            activeThumbColor: Colors.blue,
+          ),
         ],
       ),
     );

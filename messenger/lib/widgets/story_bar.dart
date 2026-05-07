@@ -44,12 +44,12 @@ class _StoryBarState extends State<StoryBar> {
     Navigator.push(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => StoryViewScreen(
+        pageBuilder: (context, animation, secondaryAnimation) => StoryViewScreen(
           stories: _stories,
           initialIndex: index,
         ),
         // Плавный переход, как в Telegram
-        transitionsBuilder: (_, animation, __, child) {
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },
         transitionDuration: const Duration(milliseconds: 200),

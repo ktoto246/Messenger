@@ -22,6 +22,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
   late Box _contactsBox;
   bool _isBoxLoaded = false;
+  bool _isChannel = false;
 
   @override
   void initState() {
@@ -54,6 +55,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         widget.currentUserId,
         _groupNameController.text,
         _selectedUserIds.toList(),
+        isChannel: _isChannel,
       );
 
       if (chatId != null && mounted) {
@@ -94,12 +96,12 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: bgColor, elevation: 0, leadingWidth: 80,
-        leading: TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: TextStyle(color: textColor, fontSize: 16))),
-        title: Text("New Group", style: TextStyle(color: textColor, fontWeight: FontWeight.bold)), centerTitle: true,
+        leading: TextButton(onPressed: () => Navigator.pop(context), child: Text("Отмена", style: TextStyle(color: textColor, fontSize: 16))),
+        title: Text(_isChannel ? "Новый канал" : "Новая группа", style: TextStyle(color: textColor, fontWeight: FontWeight.bold)), centerTitle: true,
         actions: [
           TextButton(
             onPressed: canCreate && !_isLoading ? _createGroup : null,
-            child: Text("Create", style: TextStyle(color: canCreate ? const Color(0xFF007AFF) : Colors.grey, fontWeight: FontWeight.bold, fontSize: 16)),
+            child: Text("Создать", style: TextStyle(color: canCreate ? const Color(0xFF007AFF) : Colors.grey, fontWeight: FontWeight.bold, fontSize: 16)),
           )
         ],
       ),
@@ -114,13 +116,21 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                 TextField(
                   controller: _groupNameController, textAlign: TextAlign.center, onChanged: (_) => setState(() {}), 
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor),
-                  decoration: InputDecoration(hintText: "Group Name", hintStyle: TextStyle(color: isDark ? Colors.grey[600] : Colors.grey), border: InputBorder.none),
+                  decoration: InputDecoration(hintText: _isChannel ? "Имя канала" : "Имя группы", hintStyle: TextStyle(color: isDark ? Colors.grey[600] : Colors.grey), border: InputBorder.none),
                 ),
               ],
             ),
           ),
           Divider(height: 1, color: dividerColor),
-          Container(width: double.infinity, padding: const EdgeInsets.all(16), color: headerBg, child: Text("PARTICIPANTS", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 13, fontWeight: FontWeight.bold))),
+          SwitchListTile(
+            title: Text("Это канал", style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+            subtitle: Text("В канале могут писать только администраторы", style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 12)),
+            value: _isChannel,
+            activeThumbColor: Colors.blue,
+            onChanged: (val) => setState(() => _isChannel = val),
+          ),
+          Divider(height: 1, color: dividerColor),
+          Container(width: double.infinity, padding: const EdgeInsets.all(16), color: headerBg, child: Text("УЧАСТНИКИ", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey, fontSize: 13, fontWeight: FontWeight.bold))),
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())

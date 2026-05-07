@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
 import '../config/app_config.dart';
 import 'package:http/http.dart' as http;
@@ -23,10 +22,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   final TextEditingController _welcomeController = TextEditingController();
   final TextEditingController _awayController = TextEditingController();
   List<Map<String, String>> _quickReplies = [];
-  bool _isOpenNow = true;
   TimeOfDay _openTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _closeTime = const TimeOfDay(hour: 18, minute: 0);
-  List<bool> _workDays = [false, true, true, true, true, true, false]; // Вс-Сб
+  final List<bool> _workDays = [false, true, true, true, true, true, false]; // Вс-Сб
 
   @override
   void initState() {
@@ -164,8 +162,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                   title: const Text('Бизнес-аккаунт', style: TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: const Text('Часы работы, быстрые ответы, приветствие'),
                   value: _isBusinessAccount,
-                  onChanged: (v) => setState(() => _isBusinessAccount = v),
-                  activeColor: Colors.blue,
+                   onChanged: (v) => setState(() => _isBusinessAccount = v),
+                  activeTrackColor: Colors.blue.withValues(alpha: 0.5),
+                  activeThumbColor: Colors.blue,
                 )),
 
                 if (_isBusinessAccount) ...[

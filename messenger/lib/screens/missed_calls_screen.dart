@@ -47,7 +47,7 @@ class _MissedCallsScreenState extends State<MissedCallsScreen> {
     if (seconds == null || seconds == 0) return 'Не отвечено';
     final m = seconds ~/ 60;
     final s = seconds % 60;
-    return m > 0 ? '${m} мин ${s} сек' : '${s} сек';
+    return m > 0 ? '$m мин $s сек' : '$s сек';
   }
 
   @override
@@ -82,14 +82,13 @@ class _MissedCallsScreenState extends State<MissedCallsScreen> {
                 )
               : ListView.separated(
                   itemCount: _calls.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
+                  separatorBuilder: (context, index) => const Divider(height: 1, indent: 72),
                   itemBuilder: (ctx, i) {
                     final call = _calls[i];
                     final isIncoming = call['isIncoming'] ?? call['IsIncoming'] ?? false;
                     final isMissed = call['isMissed'] ?? call['IsMissed'] ?? false;
                     final callerName = call['callerName'] ?? call['CallerName'] ?? 'Неизвестный';
                     final avatarUrl = call['avatarUrl'] ?? call['AvatarUrl'];
-                    final callerId = call['callerUserId'] ?? call['CallerUserId'];
                     final duration = call['durationSeconds'] ?? call['DurationSeconds'];
                     final createdAt = call['createdAt'] ?? call['CreatedAt'];
                     final isVideo = call['isVideo'] ?? call['IsVideo'] ?? false;

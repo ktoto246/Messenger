@@ -180,7 +180,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     themeNotifier.value = shouldBeDark;
                   }
                 },
-                activeColor: Colors.deepPurple,
+                activeTrackColor: Colors.deepPurple.withValues(alpha: 0.5),
+                activeThumbColor: Colors.deepPurple,
               ),
             ),
             _buildSettingsItem(
@@ -191,7 +192,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   setState(() => _compactMode = v);
                   await NotificationService.setCompactMode(v);
                 },
-                activeColor: Colors.teal,
+                activeTrackColor: Colors.teal.withValues(alpha: 0.5),
+                activeThumbColor: Colors.teal,
               ),
             ),
           ], blockColor),

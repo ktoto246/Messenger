@@ -8,6 +8,7 @@ import 'create_folder_screen.dart';
 import 'settings_screen.dart'; 
 import 'search_messages_screen.dart'; 
 import 'profile_screen.dart';
+import 'login_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -17,6 +18,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../config/app_config.dart';
 import '../services/folder_service.dart';
 import '../widgets/story_bar.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
+import '../services/notification_service.dart';
 
 class ChatsScreen extends StatefulWidget {
   final void Function(int chatId, String chatName, int? otherUserId)? onChatSelected;
@@ -34,6 +37,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   int? currentUserId;
   Map<String, dynamic>? currentUserProfile;
+  List<Map<String, dynamic>> _otherAccounts = [];
   
   List<dynamic> _allChats = [];
   List<dynamic> _filteredChats = [];
@@ -48,8 +52,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
   HubConnection? _hubConnection;
   final Map<int, Timer> _typingChats = {}; 
   StreamSubscription? _networkSubscription; 
-  List<int> _archivedChatIds = [];
-  bool _showArchived = false;
 
 
   @override
@@ -57,10 +59,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
     super.initState();
     _loadData();
     _searchController.addListener(_onSearchChanged);
-    // Загружаем список архивированных чатов
-    _chatService.getArchivedChatIds().then((ids) {
-      if (mounted) setState(() => _archivedChatIds = ids);
-    });
 
     _networkSubscription = Connectivity().onConnectivityChanged.listen((dynamic result) {
       bool hasConnection = false;
@@ -173,11 +171,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
       final chats = await _chatService.fetchChats(currentUserId!);
       final folders = await _folderService.getFolders();
       
+      final accounts = await _authService.getAccounts();
+      
       if (mounted) {
         setState(() {
           currentUserProfile = profile;
           _allChats = chats;
           _folders = folders;
+          _otherAccounts = accounts.where((a) => (a['userId'] ?? a['UserId']) != currentUserId).toList();
           _onSearchChanged(); 
           _isUpdating = false;
           _isLoading = false;
@@ -190,6 +191,18 @@ class _ChatsScreenState extends State<ChatsScreen> {
     } catch (e) {
       if (mounted) setState(() { _isUpdating = false; _isLoading = false; _isOffline = true; });
     }
+  }
+
+  Future<void> _switchAccount(int userId) async {
+    await _authService.switchAccount(userId);
+    if (mounted) {
+       Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const ChatsScreen()), (route) => false);
+    }
+  }
+
+  void _addAccount() {
+    Navigator.pop(context); 
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
   }
 
   Future<void> _initSignalR() async {
@@ -226,20 +239,24 @@ class _ChatsScreenState extends State<ChatsScreen> {
     _hubConnection?.on("ReceiveMessage", (args) {
       if (args != null && args.isNotEmpty) {
         final newMsg = args[0] as Map<String, dynamic>;
-        final chatId = newMsg['chatID'] ?? newMsg['ChatID'] ?? widget.chatId; // chatId может не быть в payload, но мы знаем контекст
+        final chatId = newMsg['chatID'] ?? newMsg['ChatID'];
+        if (chatId == null) return;
 
-        if (mounted) setState(() {
-          // Ищем чат в списке
-          final index = _chats.indexWhere((c) => (c['chatID'] ?? c['ChatID']) == chatId);
-          if (index != -1) {
-            final chat = _chats.removeAt(index);
-            chat['lastMessage'] = newMsg['contentText'] ?? newMsg['ContentText'] ?? "Медиафайл";
-            chat['lastMessageTime'] = newMsg['sentAt'] ?? newMsg['SentAt'];
-            _chats.insert(0, chat); // Перемещаем вверх
-          } else {
-            _refreshChats(); // Если чата нет в списке (новый чат), тогда рефрешим
-          }
-        });
+        if (mounted) {
+          setState(() {
+            // Ищем чат в списке
+            final index = _allChats.indexWhere((c) => (c['chatID'] ?? c['ChatID']) == chatId);
+            if (index != -1) {
+              final chat = _allChats.removeAt(index);
+              chat['lastMessage'] = newMsg['contentText'] ?? newMsg['ContentText'] ?? "Медиафайл";
+              chat['lastMessageTime'] = newMsg['sentAt'] ?? newMsg['SentAt'];
+              _allChats.insert(0, chat); // Перемещаем вверх
+              _onSearchChanged(); // Обновляем фильтрованный список
+            } else {
+              _refreshChats(); // Если чата нет в списке (новый чат), тогда рефрешим
+            }
+          });
+        }
       } else {
         _refreshChats();
       }
@@ -247,7 +264,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
     try {
       await _hubConnection?.start();
-      if (mounted) setState(() => _isOffline = false); // Сокет подключился - точно онлайн!
+      if (mounted) {
+        setState(() => _isOffline = false); // Сокет подключился - точно онлайн!
+      }
 
       for (var chat in _allChats) {
         final chatId = chat['chatID'] ?? chat['chatId'] ?? chat['ChatID'];
@@ -289,6 +308,22 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 backgroundImage: myAvatarUrl != null ? CachedNetworkImageProvider(myAvatarUrl) : null,
                 child: myAvatarUrl == null ? Text(myInitial, style: const TextStyle(color: Colors.white, fontSize: 24)) : null,
               ),
+              otherAccountsPictures: [
+                ..._otherAccounts.map((acc) => GestureDetector(
+                  onTap: () => _switchAccount(acc['userId']),
+                  child: CircleAvatar(
+                    backgroundImage: acc['avatarUrl'] != null ? CachedNetworkImageProvider("${AppConfig.baseUrl.replaceAll('/api', '')}${acc['avatarUrl']}") : null,
+                    child: acc['avatarUrl'] == null ? Text(acc['displayName'][0].toUpperCase()) : null,
+                  ),
+                )),
+                GestureDetector(
+                  onTap: _addAccount,
+                  child: const CircleAvatar(
+                    backgroundColor: Colors.blue,
+                    child: Icon(Icons.add, color: Colors.white),
+                  ),
+                ),
+              ],
             ),
             ListTile(
               leading: const Icon(Icons.bookmark, color: Colors.blue),
@@ -309,15 +344,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
               onTap: () {
                 Navigator.pop(context);
                 // Навигация на создание канала (создадим позже или используем существующий экран с флагом)
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.archive, color: Colors.blueGrey),
-              title: Text("Архив", style: TextStyle(color: textColor)),
-              onTap: () {
-                Navigator.pop(context);
-                setState(() => _showArchived = !_showArchived);
               },
             ),
             ListTile(
@@ -500,7 +526,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                     : ListView.separated(
                         physics: const AlwaysScrollableScrollPhysics(), 
                         itemCount: _filteredChats.length,
-                        separatorBuilder: (_, _) => Divider(indent: 76, height: 1, color: dividerColor),
+                        separatorBuilder: (context, index) => Divider(indent: 76, height: 1, color: dividerColor),
                         itemBuilder: (context, index) {
                           final chat = _filteredChats[index];
                           final chatName = chat['chatName'] ?? chat['ChatName'] ?? 'Unknown';
@@ -516,46 +542,78 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           final bool isSavedMessages = (otherUserId == null && !isGroup);
                           final String finalChatName = isSavedMessages ? "Избранное" : chatName;
                           final bool isPinned = chat['isPinned'] ?? chat['IsPinned'] ?? false;
+                          final bool isChannel = chat['isChannel'] ?? chat['IsChannel'] ?? false;
+                          final bool isAdmin = chat['isAdmin'] ?? chat['IsAdmin'] ?? false;
                           String timeStr = formatChatDateTime(timeRaw?.toString());
 
-                          return Dismissible(
+                          return Slidable(
                             key: Key('chat_$chatId'),
-                            dismissThresholds: const { DismissDirection.startToEnd: 0.25, DismissDirection.endToStart: 0.25 },
-                            background: Container(
-                              alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 24), color: isPinned ? Colors.grey : Colors.green, 
-                              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(isPinned ? Icons.push_pin_outlined : Icons.push_pin, color: Colors.white, size: 28), Text(isPinned ? "Открепить" : "Закрепить", style: const TextStyle(color: Colors.white, fontSize: 12))]),
-                            ),
-                            secondaryBackground: Container(
-                              alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 24), color: Colors.red,
-                              child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.delete_outline, color: Colors.white, size: 28), Text("Удалить", style: TextStyle(color: Colors.white, fontSize: 12))]),
-                            ),
-                            confirmDismiss: (direction) async {
-                              if (direction == DismissDirection.startToEnd) {
-                                HapticFeedback.lightImpact(); 
-                                await _chatService.togglePinChat(chatId, currentUserId!); _refreshChats(); 
-                                return false; 
-                              } else {
-                                HapticFeedback.mediumImpact();
-                                bool? confirm = await showDialog(
-                                  context: context,
-                                  builder: (BuildContext context) {
-                                    return AlertDialog(
-                                      title: const Text("Удалить чат?"), content: Text("Вы уверены, что хотите удалить переписку с $chatName? Это действие нельзя отменить."),
-                                      actions: [
-                                        TextButton(child: const Text("Отмена", style: TextStyle(color: Colors.grey)), onPressed: () => Navigator.of(context).pop(false)),
-                                        TextButton(child: const Text("Удалить", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)), onPressed: () => Navigator.of(context).pop(true)),
-                                      ],
-                                    );
+                            startActionPane: ActionPane(
+                              motion: const ScrollMotion(),
+                              children: [
+                                SlidableAction(
+                                  onPressed: (context) async {
+                                    HapticFeedback.lightImpact(); 
+                                    await _chatService.togglePinChat(chatId, currentUserId!); 
+                                    _refreshChats(); 
                                   },
-                                );
-                                if (confirm == true) {
-                                  await _chatService.deleteChat(chatId, currentUserId!);
-                                  setState(() { _allChats.removeWhere((c) => (c['chatID'] ?? c['chatId'] ?? c['ChatID']) == chatId); _onSearchChanged(); });
-                                  return true; 
-                                }
-                                return false;
-                              }
-                            },
+                                  backgroundColor: isPinned ? Colors.grey : Colors.green,
+                                  foregroundColor: Colors.white,
+                                  icon: isPinned ? Icons.push_pin_outlined : Icons.push_pin,
+                                  label: isPinned ? 'Открепить' : 'Закрепить',
+                                ),
+                              ],
+                            ),
+                            endActionPane: ActionPane(
+                              motion: const ScrollMotion(),
+                              children: [
+                                SlidableAction(
+                                  onPressed: (context) async {
+                                    HapticFeedback.mediumImpact();
+                                    bool? confirm = await showDialog(
+                                      context: context,
+                                      builder: (BuildContext context) {
+                                        return AlertDialog(
+                                          title: const Text("Удалить чат?"), content: Text("Вы уверены, что хотите удалить переписку с $chatName? Это действие нельзя отменить."),
+                                          actions: [
+                                            TextButton(child: const Text("Отмена", style: TextStyle(color: Colors.grey)), onPressed: () => Navigator.of(context).pop(false)),
+                                            TextButton(child: const Text("Удалить", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)), onPressed: () => Navigator.of(context).pop(true)),
+                                          ],
+                                        );
+                                      },
+                                    );
+                                    if (confirm == true) {
+                                      await _chatService.deleteChat(chatId, currentUserId!);
+                                      setState(() { _allChats.removeWhere((c) => (c['chatID'] ?? c['chatId'] ?? c['ChatID']) == chatId); _onSearchChanged(); });
+                                    }
+                                  },
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                  icon: Icons.delete_outline,
+                                  label: 'Удалить',
+                                ),
+                                SlidableAction(
+                                  onPressed: (context) async {
+                                    HapticFeedback.lightImpact();
+                                    bool isMuted = await NotificationService.isChatMuted(chatId);
+                                    if (isMuted) {
+                                      await NotificationService.unmuteChat(chatId);
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Уведомления включены')));
+                                    } else {
+                                      await NotificationService.muteChat(chatId, null);
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Чат заглушен')));
+                                    }
+                                    _refreshChats();
+                                  },
+                                  backgroundColor: Colors.orange,
+                                  foregroundColor: Colors.white,
+                                  icon: Icons.volume_off,
+                                  label: 'Мьют',
+                                ),
+                              ],
+                            ),
                             child: Container(
                               color: isPinned ? (isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF4F9FF)) : Colors.transparent, 
                               child: ListTile(
@@ -564,7 +622,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                   if (widget.onChatSelected != null) {
                                     widget.onChatSelected!(chatId, finalChatName, otherUserId);
                                   } else {
-                                    await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: chatId, chatName: finalChatName, currentUserId: currentUserId!, otherUserId: otherUserId)));
+                                    await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: chatId, chatName: finalChatName, currentUserId: currentUserId!, otherUserId: otherUserId, isChannel: isChannel, isAdmin: isAdmin)));
                                     _refreshChats(); 
                                   }
                                 },
@@ -573,13 +631,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                   children: [
                                     CircleAvatar(
                                       radius: 28, 
-                                      backgroundColor: isSavedMessages ? Colors.blue : (isGroup ? Colors.orangeAccent : (isDark ? Colors.grey[800] : Colors.blueAccent)),
+                                      backgroundColor: isSavedMessages ? Colors.blue : (isChannel ? Colors.purple : (isGroup ? Colors.orangeAccent : (isDark ? Colors.grey[800] : Colors.blueAccent))),
                                       backgroundImage: chatAvatar != null ? CachedNetworkImageProvider(chatAvatar) : null,
                                       child: isSavedMessages 
                                           ? const Icon(Icons.bookmark, color: Colors.white, size: 28) 
-                                          : (isGroup && chatAvatar == null 
-                                              ? const Icon(Icons.people, color: Colors.white, size: 28) 
-                                              : (chatAvatar == null ? Text(finalChatName.isNotEmpty ? finalChatName[0].toUpperCase() : '?', style: const TextStyle(color: Colors.white, fontSize: 20)) : null)),
+                                          : (isChannel && chatAvatar == null
+                                              ? const Icon(Icons.campaign, color: Colors.white, size: 28)
+                                              : (isGroup && chatAvatar == null 
+                                                  ? const Icon(Icons.people, color: Colors.white, size: 28) 
+                                                  : (chatAvatar == null ? Text(finalChatName.isNotEmpty ? finalChatName[0].toUpperCase() : '?', style: const TextStyle(color: Colors.white, fontSize: 20)) : null))),
                                     ),
                                     if (isOnline && !isGroup && !isSavedMessages)
                                       Positioned(right: 0, bottom: 0, child: Container(width: 16, height: 16, decoration: BoxDecoration(color: const Color(0xFF4CE417), shape: BoxShape.circle, border: Border.all(color: bgColor, width: 2.5)))),

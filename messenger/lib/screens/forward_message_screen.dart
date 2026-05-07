@@ -23,7 +23,7 @@ class _ForwardMessageScreenState extends State<ForwardMessageScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<dynamic> _allChats = [];
   List<dynamic> _filteredChats = [];
-  Set<int> _selectedChatIds = {};
+  final Set<int> _selectedChatIds = {};
   bool _isLoading = true;
   bool _isSending = false;
 

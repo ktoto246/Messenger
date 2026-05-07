@@ -48,6 +48,8 @@ namespace WebApplication1.Controllers
                 {
                     cp.Chat.ChatID,
                     cp.Chat.IsGroup,
+                    cp.Chat.IsChannel,
+                    cp.IsAdmin,
                     cp.Chat.GroupName,
                     cp.IsPinned,
                     OtherUser = cp.Chat.Participants
@@ -86,7 +88,9 @@ namespace WebApplication1.Controllers
                 LastMessage = x.LastMessageText ?? "",
                 LastMessageTime = x.LastMessageTime,
                 UnreadCount = x.UnreadCount,
-                IsPinned = x.IsPinned
+                IsPinned = x.IsPinned,
+                IsChannel = x.IsChannel,
+                IsAdmin = x.IsAdmin
             })
             .OrderByDescending(x => x.LastMessageTime)
             .ToList();
@@ -387,7 +391,7 @@ namespace WebApplication1.Controllers
         [HttpPost("group")]
         public async Task<IActionResult> CreateGroupChat([FromBody] CreateGroupRequest request)
         {
-            var chat = new Chat { IsGroup = true, GroupName = request.GroupName };
+            var chat = new Chat { IsGroup = true, IsChannel = request.IsChannel, GroupName = request.GroupName };
             _context.Chats.Add(chat);
             await _context.SaveChangesAsync();
 
@@ -482,7 +486,32 @@ namespace WebApplication1.Controllers
             return Ok(new { success = true });
         }
 
+        [HttpGet("{chatId}/summary")]
+        public async Task<IActionResult> GetChatSummary(int chatId)
+        {
+            // 🛡️ Проверка участия
+            var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+            if (!isParticipant) return Forbid();
+
+            // Собираем последние 50 текстовых сообщений
+            var lastMessages = await _context.Messages
+                .Where(m => m.ChatID == chatId && m.MessageType == "Text" && !string.IsNullOrEmpty(m.ContentText))
+                .OrderByDescending(m => m.SentAt)
+                .Take(50)
+                .Select(m => m.ContentText)
+                .ToListAsync();
+
+            if (lastMessages.Count < 5) 
+                return BadRequest("Недостаточно сообщений для создания саммари (нужно минимум 5).");
+
+            // 🪄 Имитация LLM Sammary
+            // В реальности здесь будет вызов OpenAI API или Gemini API
+            string mockSummary = "• Обсуждали планы на выходные.\n• Решили встретиться в субботу в 18:00.\n• Иван обещал принести настольные игры.\n• Основной тон беседы: позитивный и дружелюбный.";
+
+            return Ok(new { summary = mockSummary });
+        }
+
         public class UpdateGroupDto { public string? GroupName { get; set; } public string? AvatarUrl { get; set; } }
-        public class CreateGroupRequest { public string GroupName { get; set; } = string.Empty; public List<int> MemberUserIds { get; set; } = new(); }
+        public class CreateGroupRequest { public string GroupName { get; set; } = string.Empty; public List<int> MemberUserIds { get; set; } = new(); public bool IsChannel { get; set; } = false; }
     }
 }

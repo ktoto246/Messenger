@@ -219,5 +219,32 @@ namespace WebApplication1.Controllers
 
             return Ok(new { translatedText = message.TranslatedText });
         }
+        // POST: api/messages/5/transcribe
+        [HttpPost("{messageId}/transcribe")]
+        public async Task<IActionResult> TranscribeMessage(long messageId)
+        {
+            var message = await _context.Messages.FindAsync(messageId);
+            if (message == null) return NotFound();
+
+            // 🛡️ Проверка участия
+            var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == message.ChatID && cp.UserID == CurrentUserId);
+            if (!isParticipant) return Forbid();
+
+            if (message.MessageType != "Audio" && message.MessageType != "VoiceNote") 
+                return BadRequest("Сообщение не является голосовым.");
+
+            // 🪄 Имитация расшифровки (Speech-to-Text)
+            // В реальном проекте здесь будет вызов OpenAI Whisper или Google STT
+            string mockTranscription = "Это расшифрованное голосовое сообщение. В реальности здесь будет текст, полученный через Whisper AI или другой сервис распознавания речи.";
+            
+            // Сохраняем в TranslatedText для кэширования (если поле свободно)
+            if (string.IsNullOrEmpty(message.TranslatedText))
+            {
+                message.TranslatedText = mockTranscription;
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(new { transcription = mockTranscription });
+        }
     }
 }

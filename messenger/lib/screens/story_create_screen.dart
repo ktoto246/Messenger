@@ -20,6 +20,7 @@ class _StoryCreateScreenState extends State<StoryCreateScreen> {
   bool _isVideo = false;
   bool _isLoading = false;
   bool _isPosting = false;
+  bool _isPinned = false; // 📌 Highlight: сохраняется навсегда
 
   @override
   void dispose() {
@@ -112,14 +113,14 @@ class _StoryCreateScreenState extends State<StoryCreateScreen> {
     setState(() => _isPosting = true);
 
     final caption = _captionController.text.trim();
-    final success = await _storyService.uploadAndPostStory(_selectedFile!, caption: caption.isNotEmpty ? caption : null);
+    final success = await _storyService.uploadAndPostStory(_selectedFile!, caption: caption.isNotEmpty ? caption : null, isPinned: _isPinned);
 
     if (!mounted) return;
     setState(() => _isPosting = false);
 
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('История опубликована ✅'), backgroundColor: Colors.green),
+        SnackBar(content: Text(_isPinned ? 'История сохранена в актуальное 📌' : 'История опубликована ✅'), backgroundColor: Colors.green),
       );
       Navigator.pop(context, true); // true = нужно обновить StoryBar
     } else {
@@ -261,26 +262,53 @@ class _StoryCreateScreenState extends State<StoryCreateScreen> {
                   Container(
                     color: const Color(0xFF1C1C1E),
                     padding: EdgeInsets.only(
-                      left: 16,
-                      right: 16,
-                      top: 12,
+                      left: 16, right: 16, top: 12,
                       bottom: MediaQuery.of(context).viewInsets.bottom + 12,
                     ),
-                    child: Row(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.edit_outlined, color: Colors.white38, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: _captionController,
-                            style: const TextStyle(color: Colors.white),
-                            maxLines: 2,
-                            decoration: const InputDecoration(
-                              hintText: 'Добавить подпись...',
-                              hintStyle: TextStyle(color: Colors.white38),
-                              border: InputBorder.none,
+                        Row(
+                          children: [
+                            const Icon(Icons.edit_outlined, color: Colors.white38, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _captionController,
+                                style: const TextStyle(color: Colors.white),
+                                maxLines: 2,
+                                decoration: const InputDecoration(
+                                  hintText: 'Добавить подпись...',
+                                  hintStyle: TextStyle(color: Colors.white38),
+                                  border: InputBorder.none,
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
+                        ),
+                        const Divider(color: Colors.white12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.push_pin, color: Colors.orange, size: 20),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Сохранить в Актуальном', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                    const Text('Не исчезнет через 24 часа', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            Switch(
+                              value: _isPinned,
+                              activeThumbColor: Colors.orange,
+                              onChanged: (v) => setState(() => _isPinned = v),
+                            ),
+                          ],
                         ),
                       ],
                     ),

@@ -34,14 +34,21 @@ import 'chat_wallpaper_screen.dart';
 import 'export_chat_screen.dart';
 import '../services/translation_service.dart';
 import '../services/notification_service.dart';
+import 'package:any_link_preview/any_link_preview.dart';
+import 'media_editor_screen.dart';
+import 'package:http/http.dart' as http;
+import '../services/auth_service.dart';
+import '../services/secret_chat_service.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int chatId;
   final String chatName;
   final int currentUserId;
   final int? otherUserId;
+  final bool isChannel;
+  final bool isAdmin;
 
-  const ChatDetailScreen({super.key, required this.chatId, required this.chatName, required this.currentUserId, this.otherUserId});
+  const ChatDetailScreen({super.key, required this.chatId, required this.chatName, required this.currentUserId, this.otherUserId, this.isChannel = false, this.isAdmin = false});
 
   @override
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
@@ -56,6 +63,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _isLoading = true;
   bool _isLoadingMore = false;
   bool _hasMore = true; 
+  final Map<int, String> _transcriptions = {}; // 🎙️ Храним расшифровки голосовых
+  bool _isSummarizing = false; // 📑 Флаг генерации саммари
+  bool _isSecret = false; // 🔐 Флаг секретного чата
   HubConnection? _hubConnection;
   bool _isTyping = false;
   Timer? _typingTimer; 
@@ -106,6 +116,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _isSecret = widget.chatName.contains('🔐');
     _focusNode.addListener(() {
       if (_focusNode.hasFocus && mounted) setState(() => _showEmojiPicker = false);
     });
@@ -552,8 +563,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       } else {
         int? replyId = _replyingToMessage != null ? (_replyingToMessage['messageID'] ?? _replyingToMessage['MessageID']) : null;
         // Передаём запланированное время, если оно было выбрано
+        // Секретный чат: шифруем
+        String finalContent = text;
+        if (_isSecret) {
+          finalContent = SecretChatService.encrypt(text, "dummy");
+        }
         await _chatService.sendMessage(
-          widget.chatId, widget.currentUserId, text,
+          widget.chatId, widget.currentUserId, finalContent,
           replyToMessageId: replyId,
           messageType: "Text",
           scheduledAt: _scheduledAt,
@@ -597,6 +613,127 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       await _loadMessages(isRefresh: true);
       _safeSignalRSend("ReceiveMessage", []);
     }
+  }
+
+  Future<void> _transcribeMessage(int messageId) async {
+    if (_transcriptions.containsKey(messageId)) return; // Уже расшифровано
+
+    try {
+      final token = await AuthService.getToken();
+      final response = await http.post(
+        Uri.parse("${AppConfig.baseUrl}/messages/$messageId/transcribe"),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _transcriptions[messageId] = data['transcription'];
+        });
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ошибка расшифровки ❌")));
+      }
+    } catch (e) {
+      debugPrint("Transcription error: $e");
+    }
+  }
+
+  Future<void> _showChatSummary() async {
+    setState(() => _isSummarizing = true);
+    try {
+      final token = await AuthService.getToken();
+      final response = await http.get(
+        Uri.parse("${AppConfig.baseUrl}/chats/${widget.chatId}/summary"),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (!mounted) return;
+        _showSummaryModal(data['summary']);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Недостаточно сообщений для саммари 📑")));
+      }
+    } catch (e) {
+      debugPrint("Summary error: $e");
+    } finally {
+      setState(() => _isSummarizing = false);
+    }
+  }
+
+  void _showSummaryModal(String summary) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.auto_awesome, color: Colors.blue),
+            SizedBox(width: 8),
+            Text("ИИ Саммари"),
+          ],
+        ),
+        content: Text(summary),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Понятно")),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sendSticker(String stickerUrl) async {
+    await _chatService.sendMessage(widget.chatId, widget.currentUserId, "", messageType: "Sticker", mediaUrl: stickerUrl);
+    await _loadMessages(isRefresh: true);
+    _safeSignalRSend("ReceiveMessage", []);
+  }
+
+  void _showStickerPicker() {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final List<String> sampleStickers = [
+      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/3o7TKv6vLzH2v4v4vO/giphy.gif",
+      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/l41lTfO3vD7zH8k9y/giphy.gif",
+      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/3o7TKVUn7iM8FMEU24/giphy.gif",
+      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/3o7TKvUn7iM8FMEU24/giphy.gif",
+      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/3o7TKVUn7iM8FMEU24/giphy.gif",
+      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/3o7TKVUn7iM8FMEU24/giphy.gif",
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return Container(
+          height: 300,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Text("Стикеры", style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+              const SizedBox(height: 16),
+              Expanded(
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10),
+                  itemCount: sampleStickers.length,
+                  itemBuilder: (context, index) {
+                    return GestureDetector(
+                      onTap: () { Navigator.pop(ctx); _sendSticker(sampleStickers[index]); },
+                      child: CachedNetworkImage(imageUrl: sampleStickers[index], fit: BoxFit.contain),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _showMessageMenu(BuildContext context, dynamic msg, bool isMe, bool isDark) {
@@ -890,7 +1027,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ],
             ),
           ),
-          _buildMessageInput(isDark, textColor), 
+          // 📢 Каналы: только администраторы могут писать
+          if (widget.isChannel && !widget.isAdmin)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(color: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF9F9F9), border: Border(top: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!))),
+              child: const SafeArea(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.campaign, color: Colors.blue, size: 20),
+                    SizedBox(width: 8),
+                    Text('Канал. Только администраторы могут писать.', style: TextStyle(color: Colors.grey, fontSize: 14)),
+                  ],
+                ),
+              ),
+            )
+          else
+            _buildMessageInput(isDark, textColor), 
         ],
         ),
       ),
@@ -950,7 +1104,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             itemBuilder: (context, msg) {
               final index = _messages.indexOf(msg);
               final bool isMe = (msg['senderUserID'] ?? msg['SenderUserID']) == widget.currentUserId;
-              final String content = msg['contentText'] ?? msg['ContentText'] ?? '';
+              String content = msg['contentText'] ?? msg['ContentText'] ?? '';
+              if (_isSecret && SecretChatService.isEncrypted(content)) {
+                content = SecretChatService.decrypt(content, "dummy");
+              }
               final String time = _formatTime(msg['sentAt'] ?? msg['SentAt']);
               final bool isRead = msg['isRead'] ?? msg['IsRead'] ?? false; 
               final bool isDelivered = msg['isDelivered'] ?? msg['IsDelivered'] ?? false;
@@ -971,8 +1128,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               bool isVideoNote = typeLower == 'videonote'; 
               bool isRegularVideo = typeLower == 'video' || (!isVideoNote && imageUrl != null && imageUrl.contains(RegExp(r'\.(mp4|webm|mov)', caseSensitive: false)));
               bool isLocation = typeLower == 'location';
+              bool isSticker = typeLower == 'sticker';
 
-              bool isVisualMedia = isImage || isVideoNote || isRegularVideo || isLocation;
+              bool isVisualMedia = isImage || isVideoNote || isRegularVideo || isLocation || isSticker;
               bool isVisualOnly = isVisualMedia && content.isEmpty && replyText == null;
               
               // Если это локация, контент содержит "lat,lng"
@@ -981,8 +1139,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 staticMapUrl = "https://maps.googleapis.com/maps/api/staticmap?center=$content&zoom=15&size=400x200&markers=color:red|$content&key=${AppConfig.googleMapsApiKey}";
               }
 
-              Color bubbleColor = isVisualOnly ? Colors.transparent : (isMe ? const Color(0xFF007AFF) : (isDark ? Colors.grey[800]! : const Color(0xFFE5E5EA)));
-              EdgeInsets bubblePadding = isVisualOnly ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 14, vertical: 10);
+              Color bubbleColor = (isVisualOnly || isSticker) ? Colors.transparent : (isMe ? const Color(0xFF007AFF) : (isDark ? Colors.grey[800]! : const Color(0xFFE5E5EA)));
+              EdgeInsets bubblePadding = (isVisualOnly || isSticker) ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 14, vertical: 10);
               String displaySenderName = isMe ? "Вы" : widget.chatName;
 
               Widget timeAndChecks = Row(
@@ -1019,6 +1177,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         ]),
                       ),
                     ),
+                  if (isSticker && imageUrl != null)
+                    CachedNetworkImage(
+                      imageUrl: imageUrl.startsWith('http') ? imageUrl : "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl",
+                      width: 140, height: 140, fit: BoxFit.contain,
+                      placeholder: (context, url) => const SizedBox(width: 140, height: 140, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                      errorWidget: (context, url, error) => const Icon(Icons.emoji_emotions, size: 60),
+                    ),
                   if (isImage && imageUrl != null) 
                     GestureDetector(
                       onTap: () async {
@@ -1047,9 +1212,56 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       ),
                     ),
                   if (isRegularVideo && imageUrl != null) InlineVideoPlayer(url: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl", senderName: displaySenderName, date: time),
-                  if (isAudio && imageUrl != null) Padding(padding: EdgeInsets.only(bottom: isVisualOnly ? 0 : 8.0), child: AudioBubble(url: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl", isMe: isMe)),
+                  if (isAudio && imageUrl != null) 
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(padding: EdgeInsets.only(bottom: isVisualOnly ? 0 : 8.0), child: AudioBubble(url: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl", isMe: isMe)),
+                        if (_transcriptions.containsKey(int.parse(msgId)))
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
+                            child: Text(_transcriptions[int.parse(msgId)]!, style: const TextStyle(color: Colors.white70, fontSize: 13, fontStyle: FontStyle.italic)),
+                          )
+                        else
+                          TextButton.icon(
+                            onPressed: () => _transcribeMessage(int.parse(msgId)),
+                            icon: const Icon(Icons.text_fields, size: 14, color: Colors.blue),
+                            label: const Text("Расшифровать", style: TextStyle(fontSize: 12, color: Colors.blue)),
+                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                          ),
+                      ],
+                    ),
                   if (isVideoNote && imageUrl != null) Padding(padding: EdgeInsets.only(bottom: isVisualOnly ? 0 : 8.0), child: VideoCircle(url: "${AppConfig.baseUrl.replaceAll('/api', '')}$imageUrl")),
-                  if (content.isNotEmpty && !isLocation) Padding(padding: const EdgeInsets.only(bottom: 4.0), child: Text(content, style: TextStyle(color: isMe ? Colors.white : mainTextColor, fontSize: 16))),
+                  if (content.isNotEmpty && !isLocation) ...[
+                    Padding(padding: const EdgeInsets.only(bottom: 4.0), child: Text(content, style: TextStyle(color: isMe ? Colors.white : mainTextColor, fontSize: 16))),
+                    Builder(builder: (context) {
+                      final RegExp urlRegExp = RegExp(r'(https?:\/\/[^\s]+)');
+                      final match = urlRegExp.firstMatch(content);
+                      if (match != null) {
+                        final String url = match.group(0)!;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: AnyLinkPreview(
+                              link: url,
+                              displayDirection: UIDirection.uiDirectionVertical,
+                              bodyMaxLines: 2,
+                              bodyTextOverflow: TextOverflow.ellipsis,
+                              titleStyle: TextStyle(color: isMe ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 14),
+                              bodyStyle: TextStyle(color: isMe ? Colors.white70 : Colors.black54, fontSize: 12),
+                              errorWidget: const SizedBox.shrink(),
+                              cache: const Duration(hours: 24),
+                              backgroundColor: isMe ? Colors.white.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
+                            ),
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }),
+                  ],
                   if (msg['translatedText'] != null) 
                     Container(
                       margin: const EdgeInsets.only(top: 4, bottom: 8), padding: const EdgeInsets.all(8),
@@ -1187,6 +1399,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                             children: [
                                               _attachItem(ctx, Icons.photo_library, 'Галерея', Colors.purple, () => _pickImageOrVideo(fromGallery: true)),
                                               _attachItem(ctx, Icons.camera_alt, 'Камера', Colors.blue, () => _pickImageOrVideo(fromGallery: false)),
+                                              _attachItem(ctx, Icons.emoji_emotions, 'Стикеры', Colors.pinkAccent, _showStickerPicker),
                                               _attachItem(ctx, Icons.insert_drive_file, 'Файл', Colors.orange, _pickAndSendFile),
                                               _attachItem(ctx, Icons.poll, 'Опрос', Colors.green, _openCreatePoll),
                                               _attachItem(ctx, Icons.location_on, 'Геолокация', Colors.red, _shareLocation),
@@ -1452,7 +1665,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.chatName, style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      Flexible(child: Text(widget.chatName, style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+                      if (_isSecret) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.lock, color: Colors.green, size: 14)),
+                    ],
+                  ),
                   if (_isTyping) const Text("печатает...", style: TextStyle(color: Colors.blue, fontSize: 12, fontWeight: FontWeight.w400)),
                 ],
               ),
@@ -1558,7 +1776,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ? await picker.pickImage(source: ImageSource.gallery, imageQuality: 85)
         : await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
     if (file == null || !mounted) return;
-    await _uploadAndSendMedia(File(file.path), 'Image');
+    
+    final editedFile = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => MediaEditorScreen(imageFile: File(file.path))),
+    );
+    
+    if (editedFile != null && editedFile is File) {
+      await _uploadAndSendMedia(editedFile, 'Image');
+    }
   }
 
   // ── Панель подсказок упоминаний (@username) ──
@@ -1675,6 +1901,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       if (mounted) setState(() => _isMuted = true);
                     }
                   }
+                },
+              ),
+              // Саммари
+              ListTile(
+                leading: _isSummarizing 
+                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.auto_awesome, color: Colors.blue),
+                title: const Text('Краткое содержание (AI)'),
+                subtitle: const Text('Создать выжимку последних сообщений'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showChatSummary();
                 },
               ),
               // Обои

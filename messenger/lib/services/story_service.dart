@@ -31,7 +31,7 @@ class StoryService {
   }
 
   /// Загрузить медиафайл и опубликовать историю
-  Future<bool> uploadAndPostStory(File file, {String? caption}) async {
+  Future<bool> uploadAndPostStory(File file, {String? caption, bool isPinned = false}) async {
     try {
       final token = await AuthService.getToken();
       // 1. Загружаем медиафайл
@@ -48,16 +48,15 @@ class StoryService {
       final mediaUrl = uploadData['mediaUrl'] as String?;
       if (mediaUrl == null) return false;
 
-      // 2. Публикуем историю — используем queryParameters для безопасного кодирования
+      // 2. Публикуем историю
       final headers = await _getHeaders();
       final uri = Uri.parse(baseUrl).replace(
-        queryParameters: {if (caption != null && caption.isNotEmpty) 'caption': caption},
+        queryParameters: {
+          if (caption != null && caption.isNotEmpty) 'caption': caption,
+          if (isPinned) 'isPinned': 'true',
+        },
       );
-      final response = await http.post(
-        uri,
-        headers: headers,
-        body: jsonEncode(mediaUrl),
-      );
+      final response = await http.post(uri, headers: headers, body: jsonEncode(mediaUrl));
       return response.statusCode == 200;
     } catch (e) {
       debugPrint("Ошибка публикации сторис: $e");

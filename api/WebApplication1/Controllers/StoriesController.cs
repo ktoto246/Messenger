@@ -50,7 +50,7 @@ namespace WebApplication1.Controllers
 
         // 2. СОЗДАНИЕ СТОРИС
         [HttpPost]
-        public async Task<IActionResult> PostStory([FromBody] string mediaUrl, [FromQuery] string? caption = null)
+        public async Task<IActionResult> PostStory([FromBody] string mediaUrl, [FromQuery] string? caption = null, [FromQuery] bool isPinned = false)
         {
             var newStory = new Story
             {
@@ -58,7 +58,7 @@ namespace WebApplication1.Controllers
                 MediaUrl = mediaUrl,
                 Caption = caption,
                 CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddHours(24)
+                ExpiresAt = isPinned ? DateTime.UtcNow.AddYears(100) : DateTime.UtcNow.AddHours(24)
             };
 
             _context.Stories.Add(newStory);

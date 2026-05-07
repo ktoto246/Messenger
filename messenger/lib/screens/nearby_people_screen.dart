@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../services/chat_service.dart';
 import '../config/app_config.dart';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
@@ -195,7 +194,7 @@ class _NearbyPeopleScreenState extends State<NearbyPeopleScreen> {
                           )
                         : ListView.separated(
                             itemCount: _nearbyUsers.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
+                            separatorBuilder: (context, index) => const Divider(height: 1, indent: 72),
                             itemBuilder: (ctx, i) {
                               final user = _nearbyUsers[i];
                               final name = user['displayName'] ?? user['DisplayName'] ?? 'Пользователь';

@@ -24,6 +24,9 @@ class AuthService {
         if (userId != null && token != null) {
           await _storage.write(key: 'userId', value: userId.toString());
           await _storage.write(key: 'token', value: token);
+          
+          // Сохраняем сессию в список аккаунтов
+          await _saveSession(userId, token, data['displayName'], data['avatarUrl']);
           return true;
         }
       } 
@@ -31,6 +34,52 @@ class AuthService {
       
     } catch (e) {
       throw Exception('NETWORK_ERROR');
+    }
+  }
+
+  Future<void> _saveSession(int userId, String token, String? displayName, String? avatarUrl) async {
+    final sessionsJson = await _storage.read(key: 'sessions');
+    List<dynamic> sessions = sessionsJson != null ? jsonDecode(sessionsJson) : [];
+    
+    // Удаляем старую сессию этого юзера если была
+    sessions.removeWhere((s) => s['userId'] == userId);
+    
+    sessions.add({
+      'userId': userId,
+      'token': token,
+      'displayName': displayName ?? 'User $userId',
+      'avatarUrl': avatarUrl,
+    });
+    
+    await _storage.write(key: 'sessions', value: jsonEncode(sessions));
+  }
+
+  Future<List<Map<String, dynamic>>> getAccounts() async {
+    final sessionsJson = await _storage.read(key: 'sessions');
+    if (sessionsJson == null) return [];
+    return List<Map<String, dynamic>>.from(jsonDecode(sessionsJson));
+  }
+
+  Future<void> switchAccount(int userId) async {
+    final sessions = await getAccounts();
+    final session = sessions.firstWhere((s) => s['userId'] == userId);
+    
+    await _storage.write(key: 'userId', value: userId.toString());
+    await _storage.write(key: 'token', value: session['token']);
+  }
+
+  Future<void> removeAccount(int userId) async {
+    final sessions = await getAccounts();
+    sessions.removeWhere((s) => s['userId'] == userId);
+    await _storage.write(key: 'sessions', value: jsonEncode(sessions));
+    
+    final currentId = await getCurrentUserId();
+    if (currentId == userId) {
+      if (sessions.isNotEmpty) {
+        await switchAccount(sessions.first['userId']);
+      } else {
+        await logout();
+      }
     }
   }
   
@@ -64,6 +113,8 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    final userId = await getCurrentUserId();
+    if (userId != null) await removeAccount(userId);
     await _storage.delete(key: 'userId');
     await _storage.delete(key: 'token');
   }

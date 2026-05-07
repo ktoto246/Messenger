@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../services/chat_service.dart';
 import '../services/auth_service.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';

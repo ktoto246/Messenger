@@ -9,6 +9,8 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'package:marquee/marquee.dart';
 import '../config/app_config.dart';
+import '../services/story_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -21,12 +23,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final AuthService _authService = AuthService();
   final ChatService _chatService = ChatService();
   final AudioPlayer _audioPlayer = AudioPlayer();
+  final StoryService _storyService = StoryService();
   
   Map<String, dynamic>? userProfile;
   bool _isLoading = true;
   bool _isPlayingMusic = false;
   String? _musicUrl;
   bool _isUploadingMusic = false;
+  List<dynamic> _highlights = [];
 
   @override
   void initState() {
@@ -49,10 +53,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final userId = await _authService.getCurrentUserId();
     if (userId != null) {
       final profile = await _chatService.getUserProfile(userId);
+      final allStories = await _storyService.getStories();
+      
       if (mounted) {
         setState(() {
           userProfile = profile;
           _musicUrl = profile?['musicUrl'];
+          
+          // Highlights = сторис текущего пользователя с ExpiresAt > 10 лет от сейчас
+          final now = DateTime.now();
+          _highlights = allStories.where((s) {
+            final isMine = s['user']['userID'] == userId;
+            // На самом деле на бэкенде мы ставили +100 лет. Проверим по дате.
+            final expiry = DateTime.parse(s['expiresAt'] ?? s['ExpiresAt']);
+            return isMine && expiry.year > (now.year + 5); 
+          }).toList();
+          
           _isLoading = false;
         });
       }
@@ -179,6 +195,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildHighlights(bool isDark, Color textColor) {
+    if (_highlights.isEmpty) return const SizedBox();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text("Актуальное", style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18)),
+        ),
+        SizedBox(
+          height: 100,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: _highlights.length,
+            itemBuilder: (context, index) {
+              final h = _highlights[index];
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.orange, width: 2)),
+                      child: CircleAvatar(
+                        radius: 32,
+                        backgroundImage: CachedNetworkImageProvider("${AppConfig.baseUrl.replaceAll('/api', '')}${h['mediaUrl']}"),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(h['caption'] ?? "Highlight", style: TextStyle(color: textColor, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -255,6 +314,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildMusicPlayer(),
             
             const SizedBox(height: 24),
+            
+            _buildHighlights(isDark, textColor),
 
             _buildDivider(isDark),
 

@@ -203,10 +203,15 @@ class ChatService {
     return null;
   }
 
-  // 6. Создать групповой чат
-  Future<int?> createGroupChat(int adminId, String groupName, List<int> memberIds) async {
+  // 6. Создать групповой чат или канал
+  Future<int?> createGroupChat(int adminId, String groupName, List<int> memberIds, {bool isChannel = false}) async {
     final headers = await _getHeaders();
-    final response = await http.post(Uri.parse('$baseUrl/chats/group'), headers: headers, body: jsonEncode({'groupName': groupName, 'memberUserIds': memberIds}));
+    final body = jsonEncode({
+      'groupName': groupName,
+      'memberUserIds': memberIds,
+      'isChannel': isChannel
+    });
+    final response = await http.post(Uri.parse('$baseUrl/chats/group'), headers: headers, body: body);
     if (response.statusCode == 200) return jsonDecode(response.body)['chatId'];
     return null;
   }
@@ -477,17 +482,5 @@ class ChatService {
       final headers = await _getHeaders();
       await http.delete(Uri.parse('$baseUrl/calls/history/$userId'), headers: headers);
     } catch (e) { debugPrint('clearCallHistory error: $e'); }
-  }
-
-  // 29. ПОИСК ПОЛЬЗОВАТЕЛЕЙ (для @упоминаний)
-  Future<List<dynamic>> searchUsers(String query) async {
-    if (query.trim().isEmpty) return [];
-    try {
-      final headers = await _getHeaders();
-      final uri = Uri.parse('$baseUrl/users/search').replace(queryParameters: {'q': query, 'limit': '8'});
-      final response = await http.get(uri, headers: headers);
-      if (response.statusCode == 200) return jsonDecode(response.body);
-    } catch (e) { debugPrint('searchUsers error: $e'); }
-    return [];
   }
 }
