@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
 import '../services/story_service.dart';
+import '../services/chat_service.dart';
+import '../services/auth_service.dart';
 import '../config/app_config.dart';
 
 /// Экран просмотра историй — Telegram/Instagram стиль
@@ -26,6 +28,8 @@ class StoryViewScreen extends StatefulWidget {
 class _StoryViewScreenState extends State<StoryViewScreen>
     with SingleTickerProviderStateMixin {
   final StoryService _storyService = StoryService();
+  final ChatService _chatService = ChatService();
+  final AuthService _authService = AuthService();
 
   late int _currentIndex;
   late AnimationController _progressController;
@@ -173,8 +177,8 @@ class _StoryViewScreenState extends State<StoryViewScreen>
       backgroundColor: Colors.black,
       resizeToAvoidBottomInset: true,
       body: GestureDetector(
-        onLongPressStart: (_) => _pauseResume(true),
-        onLongPressEnd: (_) => _pauseResume(false),
+        onLongPressStart: (details) => _pauseResume(true),
+        onLongPressEnd: (details) => _pauseResume(false),
         onTapDown: (details) {
           final halfWidth = MediaQuery.of(context).size.width / 2;
           if (details.globalPosition.dx < halfWidth) {
@@ -330,7 +334,7 @@ class _StoryViewScreenState extends State<StoryViewScreen>
                                 controller: _replyController,
                                 autofocus: true,
                                 style: const TextStyle(color: Colors.white),
-                                onSubmitted: (_) {
+                                onSubmitted: (value) {
                                   setState(() => _isReplying = false);
                                   _replyController.clear();
                                   _pauseResume(false);
@@ -350,15 +354,34 @@ class _StoryViewScreenState extends State<StoryViewScreen>
                             ),
                             const SizedBox(width: 8),
                             GestureDetector(
-                              onTap: () {
-                                // TODO: отправить ответ в личку
-                                setState(() => _isReplying = false);
-                                _replyController.clear();
-                                _pauseResume(false);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Ответ отправлен ✅')),
-                                );
-                              },
+                                onTap: () async {
+                                  final text = _replyController.text.trim();
+                                  if (text.isNotEmpty) {
+                                    final currentUserId = await _authService.getCurrentUserId();
+                                    if (currentUserId != null) {
+                                      final targetUserId = user?['userId'] ?? user?['UserId'] ?? story['userId'] ?? story['UserId'];
+                                      if (targetUserId != null && targetUserId is int) {
+                                        final chatId = await _chatService.createPrivateChat(currentUserId, targetUserId);
+                                        if (chatId != null) {
+                                          await _chatService.sendMessage(
+                                            chatId, 
+                                            currentUserId, 
+                                            "Ответ на историю: $text",
+                                            mediaUrl: rawUrl, // Ссылка на саму историю
+                                            messageType: "Text"
+                                          );
+                                        }
+                                      }
+                                    }
+                                  }
+                                  setState(() => _isReplying = false);
+                                  _replyController.clear();
+                                  _pauseResume(false);
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Ответ отправлен ✅')),
+                                  );
+                                },
                               child: const CircleAvatar(
                                 radius: 22,
                                 backgroundColor: Colors.blue,

@@ -22,7 +22,6 @@ import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'group_info_screen.dart';
 import '../config/app_config.dart';
-import '../services/auth_service.dart';
 import 'call_screen.dart';
 import 'package:giphy_get/giphy_get.dart';
 import 'package:geolocator/geolocator.dart';
@@ -33,8 +32,6 @@ import 'forward_message_screen.dart';
 import 'create_poll_screen.dart';
 import 'chat_wallpaper_screen.dart';
 import 'export_chat_screen.dart';
-import '../widgets/spoiler_text.dart';
-import '../widgets/poll_bubble.dart';
 import '../services/translation_service.dart';
 import '../services/notification_service.dart';
 
@@ -68,7 +65,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   bool _showScrollToBottom = false;
   DateTime? _scheduledAt;
-  bool _isViewOnceEnabled = false;
   int _unreadCountWhileScrolled = 0; // Keeping it if it will be used in UI soon
 
   bool _isAudioMode = true; 
@@ -670,13 +666,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     final translated = await TranslationService.translate(text, target: target);
                     if (!mounted) return;
                     if (translated != null) {
-                      showDialog(context: context, builder: (ctx) => AlertDialog(
-                        title: const Text('Перевод'),
-                        content: SelectableText(translated, style: const TextStyle(fontSize: 16)),
-                        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть'))],
-                      ));
+                      if (context.mounted) {
+                        showDialog(context: context, builder: (ctx) => AlertDialog(
+                          title: const Text('Перевод'),
+                          content: SelectableText(translated, style: const TextStyle(fontSize: 16)),
+                          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть'))],
+                        ));
+                      }
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Не удалось перевести 😔')));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Не удалось перевести 😔')));
+                      }
                     }
                   },
                 ),
@@ -688,30 +688,32 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     Navigator.pop(context);
                     final history = await _chatService.getMessageEditHistory(msgId);
                     if (!mounted) return;
-                    showDialog(context: context, builder: (ctx) => AlertDialog(
-                      title: const Text('История изменений'),
-                      content: history.isEmpty
-                          ? const Text('Сообщение не редактировалось')
-                          : SizedBox(
-                              width: double.maxFinite,
-                              child: ListView.separated(
-                                shrinkWrap: true,
-                                itemCount: history.length,
-                                separatorBuilder: (_, __) => const Divider(),
-                                itemBuilder: (ctx2, i) {
-                                  final h = history[i];
-                                  final editedAt = h['editedAt'] ?? h['EditedAt'] ?? '';
-                                  final prevText = h['previousText'] ?? h['PreviousText'] ?? '';
-                                  return ListTile(
-                                    dense: true,
-                                    title: Text(prevText, style: const TextStyle(fontSize: 13)),
-                                    subtitle: Text(editedAt.toString(), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                  );
-                                },
+                    if (context.mounted) {
+                      showDialog(context: context, builder: (ctx) => AlertDialog(
+                        title: const Text('История изменений'),
+                        content: history.isEmpty
+                            ? const Text('Сообщение не редактировалось')
+                            : SizedBox(
+                                width: double.maxFinite,
+                                child: ListView.separated(
+                                  shrinkWrap: true,
+                                  itemCount: history.length,
+                                  separatorBuilder: (context, index) => const Divider(),
+                                  itemBuilder: (ctx2, i) {
+                                    final h = history[i];
+                                    final editedAt = h['editedAt'] ?? h['EditedAt'] ?? '';
+                                    final prevText = h['previousText'] ?? h['PreviousText'] ?? '';
+                                    return ListTile(
+                                      dense: true,
+                                      title: Text(prevText, style: const TextStyle(fontSize: 13)),
+                                      subtitle: Text(editedAt.toString(), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                    );
+                                  },
+                                ),
                               ),
-                            ),
-                      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть'))],
-                    ));
+                        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть'))],
+                      ));
+                    }
                   },
                 ),
                 // МУЛЬТИСЕЛЕКТ
@@ -744,25 +746,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
-  void _showImageSourceMenu(bool isDark) {
-    showModalBottomSheet(context: context, backgroundColor: isDark ? Colors.grey[900] : Colors.white, builder: (context) => StatefulBuilder(builder: (context, setModalState) => SafeArea(child: Wrap(children: [
-      SwitchListTile(
-        title: Text("Посмотреть один раз", style: TextStyle(color: isDark ? Colors.white : Colors.black)),
-        subtitle: const Text("Медиа исчезнет после открытия"),
-        secondary: const Icon(Icons.visibility_off, color: Colors.blue),
-        value: _isViewOnceEnabled,
-        onChanged: (val) {
-          setModalState(() => _isViewOnceEnabled = val);
-          setState(() => _isViewOnceEnabled = val);
-        },
-      ),
-      const Divider(),
-      ListTile(leading: Icon(Icons.photo_library, color: isDark ? Colors.white : Colors.black), title: Text('Фото из галереи', style: TextStyle(color: isDark ? Colors.white : Colors.black)), onTap: () { Navigator.pop(context); _pickAndSendMedia(ImageSource.gallery, false); }),
-      ListTile(leading: Icon(Icons.camera_alt, color: isDark ? Colors.white : Colors.black), title: Text('Сделать фото', style: TextStyle(color: isDark ? Colors.white : Colors.black)), onTap: () { Navigator.pop(context); _pickAndSendMedia(ImageSource.camera, false); }),
-      ListTile(leading: Icon(Icons.video_library, color: isDark ? Colors.white : Colors.black), title: Text('Видео из галереи', style: TextStyle(color: isDark ? Colors.white : Colors.black)), onTap: () { Navigator.pop(context); _pickAndSendMedia(ImageSource.gallery, true); }),
-      ListTile(leading: const Icon(Icons.location_on, color: Colors.green), title: Text('Моё местоположение', style: TextStyle(color: isDark ? Colors.white : Colors.black)), onTap: () { Navigator.pop(context); _shareLocation(); }),
-    ]))));
-  }
 
   Future<void> _shareLocation() async {
     bool serviceEnabled;
@@ -802,42 +785,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _safeSignalRSend("ReceiveMessage", []);
   }
 
-  Future<void> _pickAndSendMedia(ImageSource source, bool isVideo) async {
-    final picker = ImagePicker();
-    XFile? pickedFile;
-    if (isVideo) {
-      pickedFile = await picker.pickVideo(source: source);
-    } else {
-      pickedFile = await picker.pickImage(source: source, imageQuality: 70);
-    }
 
-    if (pickedFile != null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Отправка ${isVideo ? 'видео' : 'фото'}...")));
-      
-      String? uploadedMediaUrl = await _chatService.uploadMedia(File(pickedFile.path));
-      if (uploadedMediaUrl != null) {
-        int? replyId = _replyingToMessage != null ? (_replyingToMessage['messageID'] ?? _replyingToMessage['MessageID']) : null;
-        await _chatService.sendMessage(
-          widget.chatId, 
-          widget.currentUserId, 
-          _messageController.text.trim(), 
-          replyToMessageId: replyId, 
-          mediaUrl: uploadedMediaUrl, 
-          messageType: isVideo ? "Video" : "Image",
-          isViewOnce: _isViewOnceEnabled
-        );
-        if(!mounted) return;
-        _cancelAction();
-        setState(() => _isViewOnceEnabled = false); // Сброс
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-        }
-        await _loadMessages(isRefresh: true);
-        _safeSignalRSend("ReceiveMessage", []);
-      }
-    }
-  }
 
   DateTime _parseDateSafely(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty || dateStr.startsWith('0001')) return DateTime.now(); 
@@ -856,18 +804,28 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     Color bgColor = Theme.of(context).scaffoldBackgroundColor;
     Color textColor = isDark ? Colors.white : Colors.black;
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: Colors.transparent,
-      appBar: _buildAppBar(isDark, textColor, bgColor),
-      body: Container(
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) _saveDraftAndLeave();
+      },
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        backgroundColor: Colors.transparent,
+        appBar: _buildAppBar(isDark, textColor, bgColor),
+        body: Container(
         decoration: BoxDecoration(
           color: bgColor,
-          image: isDark ? const DecorationImage(
-            image: AssetImage('assets/images/chat_bg.png'),
-            fit: BoxFit.cover,
-            opacity: 0.15, // Subtle pattern
-          ) : null,
+          image: _wallpaperPath != null 
+            ? DecorationImage(
+                image: FileImage(File(_wallpaperPath!)),
+                fit: BoxFit.cover,
+                opacity: isDark ? 0.3 : 1.0,
+              )
+            : (isDark ? const DecorationImage(
+                image: AssetImage('assets/images/chat_bg.png'),
+                fit: BoxFit.cover,
+                opacity: 0.15, // Subtle pattern
+              ) : null),
         ),
         child: SafeArea(
           bottom: false,
@@ -928,12 +886,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                             ),
                         ],
                       ),
-                    ),
+                ),
               ],
             ),
           ),
           _buildMessageInput(isDark, textColor), 
         ],
+        ),
       ),
     ),
   ),
