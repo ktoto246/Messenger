@@ -49,6 +49,8 @@ namespace WebApplication1.Controllers
                     cp.Chat.ChatID,
                     cp.Chat.IsGroup,
                     cp.Chat.IsChannel,
+                    cp.Chat.IsSecret,
+                    cp.Chat.IsSavedMessages,
                     cp.IsAdmin,
                     cp.Chat.GroupName,
                     cp.IsPinned,
@@ -75,7 +77,10 @@ namespace WebApplication1.Controllers
                         .Select(m => (DateTime?)m.SentAt)
                         .FirstOrDefault(),
                     UnreadCount = cp.Chat.Messages
-                        .Count(m => m.SenderUserID != userId && !m.IsRead && !m.IsDeleted)
+                        .Count(m => m.SenderUserID != userId && 
+                                   (cp.LastReadMessageId == null || m.MessageID > cp.LastReadMessageId) && 
+                                   (cp.LastDeletedMessageId == null || m.MessageID > cp.LastDeletedMessageId) &&
+                                   !m.IsDeleted)
                 })
                 .ToListAsync();
 
@@ -92,9 +97,12 @@ namespace WebApplication1.Controllers
                 UnreadCount = x.UnreadCount,
                 IsPinned = x.IsPinned,
                 IsChannel = x.IsChannel,
-                IsAdmin = x.IsAdmin
+                IsSecret = x.IsSecret,
+                IsAdmin = x.IsAdmin,
+                IsSavedMessages = x.IsSavedMessages
             })
-            .OrderByDescending(x => x.LastMessageTime)
+            .OrderByDescending(x => x.IsPinned)
+            .ThenByDescending(x => x.LastMessageTime)
             .ToList();
 
             return Ok(result);
@@ -107,11 +115,16 @@ namespace WebApplication1.Controllers
         public async Task<IActionResult> GetMessages(int chatId, [FromQuery] long? lastMessageId = null, [FromQuery] int take = 30)
         {
             // 🛡️ Проверка: является ли пользователь участником этого чата
-            var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
-            if (!isParticipant) return Forbid();
+            var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+            if (participant == null) return Forbid();
 
             var query = _context.Messages
                 .Where(m => m.ChatID == chatId && !m.IsDeleted && (m.ScheduledAt == null || m.ScheduledAt <= DateTime.UtcNow));
+
+            if (participant.LastDeletedMessageId != null)
+            {
+                query = query.Where(m => m.MessageID > participant.LastDeletedMessageId);
+            }
 
             // 🛡️ Cursor-based pagination (пагинация по ID)
             if (lastMessageId != null) {
@@ -254,16 +267,24 @@ namespace WebApplication1.Controllers
         public async Task<IActionResult> MarkAsRead(int chatId)
         {
             var userId = CurrentUserId;
-            var unreadMessages = await _context.Messages
-                .Where(m => m.ChatID == chatId && m.SenderUserID != userId && !m.IsRead && !m.IsDeleted)
-                .ToListAsync();
+            var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == userId);
+            if (participant == null) return NotFound();
 
-            if (unreadMessages.Any())
+            var lastMessage = await _context.Messages
+                .Where(m => m.ChatID == chatId && !m.IsDeleted)
+                .OrderByDescending(m => m.MessageID)
+                .FirstOrDefaultAsync();
+
+            if (lastMessage != null)
             {
-                foreach (var msg in unreadMessages)
+                participant.LastReadMessageId = lastMessage.MessageID;
+                
+                // Для групп добавляем ReadReceipt
+                if (!await _context.ReadReceipts.AnyAsync(rr => rr.MessageID == lastMessage.MessageID && rr.UserID == userId))
                 {
-                    msg.IsRead = true;
+                    _context.ReadReceipts.Add(new ReadReceipt { MessageID = lastMessage.MessageID, UserID = userId });
                 }
+                
                 await _context.SaveChangesAsync();
             }
 
@@ -374,18 +395,31 @@ namespace WebApplication1.Controllers
         // 6. ОЧИСТКА ИСТОРИИ ЧАТА (МЯГКОЕ УДАЛЕНИЕ)
         // ==========================================
         [HttpDelete("{chatId}/messages")]
-        public async Task<IActionResult> ClearChatHistory(int chatId)
+        public async Task<IActionResult> ClearChatHistory(int chatId, [FromQuery] bool forEveryone = false)
         {
             var userId = CurrentUserId;
-            // Проверка участия
-            var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == userId);
-            if (!isParticipant) return Forbid();
+            var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == userId);
+            if (participant == null) return Forbid();
 
-            var messages = await _context.Messages.Where(m => m.ChatID == chatId).ToListAsync();
-            foreach (var m in messages)
+            if (forEveryone)
             {
-                m.IsDeleted = true;
+                // 🛡️ Только админ или в личке оба могут удалить для всех
+                var chat = await _context.Chats.FindAsync(chatId);
+                if (chat != null && chat.IsGroup && !participant.IsAdmin) return Forbid();
+
+                var messages = await _context.Messages.Where(m => m.ChatID == chatId).ToListAsync();
+                foreach (var m in messages) m.IsDeleted = true;
             }
+            else
+            {
+                // Удаляем только для себя через LastDeletedMessageId
+                var lastMessage = await _context.Messages.Where(m => m.ChatID == chatId).OrderByDescending(m => m.MessageID).FirstOrDefaultAsync();
+                if (lastMessage != null)
+                {
+                    participant.LastDeletedMessageId = lastMessage.MessageID;
+                }
+            }
+            
             await _context.SaveChangesAsync();
             return Ok(new { success = true });
         }
@@ -399,8 +433,8 @@ namespace WebApplication1.Controllers
             var chat = await _context.Chats.FindAsync(chatId);
             if (chat == null) return NotFound();
 
-            // В реальной БД нужно добавить колонку AutoDeleteSeconds в таблицу Chat
-            // Пока имитируем сохранение
+            chat.AutoDeleteSeconds = seconds;
+            await _context.SaveChangesAsync();
             return Ok(new { success = true, autoDeleteSeconds = seconds });
         }
 
@@ -410,8 +444,25 @@ namespace WebApplication1.Controllers
             var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
             if (!isParticipant) return Forbid();
 
-            // Реализация создания опроса (требует таблиц Polls и PollOptions)
-            return Ok(new { success = true, pollId = new Random().Next(1000, 9999) });
+            var poll = new Poll
+            {
+                ChatID = chatId,
+                CreatorUserID = CurrentUserId,
+                Question = dto.Question,
+                IsAnonymous = dto.IsAnonymous,
+                IsMultipleChoice = false, // Пока упрощенно
+                CreatedAt = DateTime.UtcNow
+            };
+
+            foreach (var optionText in dto.Options)
+            {
+                poll.Options.Add(new PollOption { OptionText = optionText });
+            }
+
+            _context.Polls.Add(poll);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { success = true, pollId = poll.PollID });
         }
 
         [HttpPut("{chatId}/archive")]
@@ -420,8 +471,10 @@ namespace WebApplication1.Controllers
             var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
             if (participant == null) return NotFound();
 
-            participant.IsPinned = false; // Обычно архив снимает закреп
-            // Можно добавить колонку IsArchived в ChatParticipant
+            participant.IsArchived = archive;
+            if (archive) participant.IsPinned = false; 
+            
+            await _context.SaveChangesAsync();
             return Ok(new { success = true, isArchived = archive });
         }
 
@@ -431,7 +484,8 @@ namespace WebApplication1.Controllers
             var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
             if (participant == null) return NotFound();
 
-            // Можно добавить колонку IsMuted в ChatParticipant
+            participant.IsMuted = mute;
+            await _context.SaveChangesAsync();
             return Ok(new { success = true, isMuted = mute });
         }
 
@@ -441,12 +495,12 @@ namespace WebApplication1.Controllers
             var userId = CurrentUserId;
             var savedChat = await _context.Chats
                 .Include(c => c.Participants)
-                .Where(c => c.IsGroup == false && c.Participants.Count == 1 && c.Participants.Any(p => p.UserID == userId))
+                .Where(c => c.IsSavedMessages && c.Participants.Any(p => p.UserID == userId))
                 .FirstOrDefaultAsync();
 
             if (savedChat != null) return Ok(new { chatId = savedChat.ChatID });
 
-            var newChat = new Chat { IsGroup = false };
+            var newChat = new Chat { IsGroup = false, IsSavedMessages = true };
             _context.Chats.Add(newChat);
             await _context.SaveChangesAsync(); 
 
@@ -545,10 +599,17 @@ namespace WebApplication1.Controllers
             var admin = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId && cp.IsAdmin);
             if (admin == null) return Forbid();
 
-            var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == userId);
-            if (participant == null) return NotFound();
+            // 🛡️ Проверка: нельзя кикнуть единственного админа (если это не выход самого себя)
+            var targetParticipant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == userId);
+            if (targetParticipant == null) return NotFound();
 
-            _context.ChatParticipants.Remove(participant);
+            if (targetParticipant.IsAdmin)
+            {
+                var otherAdminsCount = await _context.ChatParticipants.CountAsync(cp => cp.ChatID == chatId && cp.IsAdmin && cp.UserID != userId);
+                if (otherAdminsCount == 0) return BadRequest("Нельзя удалить последнего администратора группы.");
+            }
+
+            _context.ChatParticipants.Remove(targetParticipant);
             await _context.SaveChangesAsync();
             return Ok(new { success = true });
         }

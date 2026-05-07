@@ -28,6 +28,7 @@ namespace WebApplication1.Controllers
 
         // POST: api/auth/register
         [HttpPost("register")]
+        [EnableRateLimiting("register")]
         public async Task<IActionResult> Register([FromBody] RegisterDto dto)
         {
             if (await _context.Users.AnyAsync(u => u.Email == dto.Email))

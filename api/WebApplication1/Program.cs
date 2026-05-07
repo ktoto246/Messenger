@@ -38,6 +38,13 @@ builder.Services.AddRateLimiter(options =>
         opt.PermitLimit = 5;
         opt.QueueLimit = 0;
     });
+    // 🛡️ Ограничение на регистрацию
+    options.AddFixedWindowLimiter("register", opt =>
+    {
+        opt.Window = TimeSpan.FromHours(1);
+        opt.PermitLimit = 3; // Максимум 3 регистрации в час с одного IP
+        opt.QueueLimit = 0;
+    });
 });
 
 // --- JWT Authentication ---
@@ -84,7 +91,8 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("FlutterDevPolicy", policy =>
     {
-        policy.SetIsOriginAllowed(origin => true) // 🛡️ В продакшне ограничить конкретными доменами!
+        // 🛡️ В продакшне ограничить конкретными доменами!
+        policy.WithOrigins("http://localhost:3000", "http://localhost:5000", "https://yourdomain.com") 
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();           

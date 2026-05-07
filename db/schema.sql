@@ -29,6 +29,12 @@ CREATE TABLE Users (
     Bio NVARCHAR(500) NULL,
     AvatarUrl NVARCHAR(MAX) NULL,
     IsDarkMode BIT NOT NULL DEFAULT 0,
+    ThemeColor NVARCHAR(20) NOT NULL DEFAULT 'Default', -- 🎨 Новое
+    DateOfBirth DATETIME2 NULL, -- 🎂 Новое
+    MusicUrl NVARCHAR(MAX) NULL, -- 🎵 Новое
+    PrivacyPhone BIT NOT NULL DEFAULT 0, -- 🛡️ Новое
+    PrivacyAvatar BIT NOT NULL DEFAULT 0, -- 🛡️ Новое
+    PrivacyMessages BIT NOT NULL DEFAULT 0, -- 🛡️ Новое
     IsOnline BIT NOT NULL DEFAULT 0,
     LastActive DATETIME2 NULL,
     CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
@@ -43,7 +49,10 @@ CREATE TABLE Chats (
     GroupName NVARCHAR(100) NULL,
     AvatarUrl NVARCHAR(MAX) NULL,
     IsGroup BIT NOT NULL DEFAULT 0,
-    IsChannel BIT NOT NULL DEFAULT 0, -- 📢 Новое: Флаг канала
+    IsChannel BIT NOT NULL DEFAULT 0, -- 📢 Флаг канала
+    IsSavedMessages BIT NOT NULL DEFAULT 0, -- 🔖 Новое: Избранное
+    IsSecret BIT NOT NULL DEFAULT 0, -- 🔐 Новое: Секретный чат
+    AutoDeleteSeconds INT NULL, -- ⏳ Новое: Таймер удаления
     CreatorUserId INT NULL, -- 👑 Создатель канала/группы
     CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
 );
@@ -77,6 +86,10 @@ CREATE TABLE ChatParticipants (
     JoinedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
     IsPinned BIT NOT NULL DEFAULT 0,
     IsAdmin BIT NOT NULL DEFAULT 0,
+    IsArchived BIT NOT NULL DEFAULT 0, -- 📦 Новое
+    IsMuted BIT NOT NULL DEFAULT 0, -- 🔕 Новое
+    LastReadMessageId BIGINT NULL, -- 📖 Новое: Для синхронизации прочитанного
+    LastDeletedMessageId BIGINT NULL, -- 🗑️ Новое: Для "Очистить историю у меня"
     PRIMARY KEY (ChatID, UserID),
     FOREIGN KEY (ChatID) REFERENCES Chats(ChatID) ON DELETE CASCADE,
     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
@@ -90,16 +103,17 @@ CREATE TABLE Messages (
     ChatID INT NOT NULL,
     SenderUserID INT NOT NULL,
     ContentText NVARCHAR(MAX) NULL,
-    TranslatedText NVARCHAR(MAX) NULL, -- 🌍 Новое: Перевод сообщения
+    TranslatedText NVARCHAR(MAX) NULL, -- 🌍 Перевод сообщения
+    TranscriptionText NVARCHAR(MAX) NULL, -- 🎙️ Новое: Расшифровка
     MessageType NVARCHAR(50) NOT NULL DEFAULT 'Text',
     SentAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    ScheduledAt DATETIME2 NULL, -- 🕒 Новое: Отложенная отправка
-    IsRead BIT NOT NULL DEFAULT 0,
+    ScheduledAt DATETIME2 NULL, -- 🕒 Отложенная отправка
+    IsRead BIT NOT NULL DEFAULT 0, -- ⚠️ В группах заменить на ReadReceipts
     ReadAt DATETIME2 NULL,
     IsDelivered BIT NOT NULL DEFAULT 0,
     DeliveredAt DATETIME2 NULL,
-    IsViewOnce BIT NOT NULL DEFAULT 0, -- 👻 Новое: Исчезающее медиа
-    ViewedAt DATETIME2 NULL, -- 🕒 Новое: Когда исчезающее медиа было просмотрено
+    IsViewOnce BIT NOT NULL DEFAULT 0, -- 👻 Исчезающее медиа
+    ViewedAt DATETIME2 NULL, -- 🕒 Когда исчезающее медиа было просмотрено
     IsDeleted BIT NOT NULL DEFAULT 0,
     IsEdited BIT NOT NULL DEFAULT 0,
     ReplyToMessageId BIGINT NULL,
@@ -172,6 +186,9 @@ VALUES (1, 2, 'Text', 'Да, база — это база.', 1, GETUTCDATE());
 -- =======================================================
 -- РЕАКЦИИ НА СООБЩЕНИЯ
 -- =======================================================
+-- =======================================================
+-- РЕАКЦИИ НА СООБЩЕНИЯ
+-- =======================================================
 CREATE TABLE MessageReactions (
     ReactionID BIGINT PRIMARY KEY IDENTITY(1,1),
     MessageID BIGINT NOT NULL,
@@ -182,6 +199,61 @@ CREATE TABLE MessageReactions (
     CONSTRAINT FK_Reactions_Users FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 CREATE INDEX IX_MessageReactions_MessageID ON MessageReactions(MessageID);
+
+-- =============================================
+-- НОВЫЕ ТАБЛИЦЫ ДЛЯ ПОЛНОТЫ ФУНКЦИЙ
+-- =============================================
+
+-- 1. Чеки прочтения (для групп)
+CREATE TABLE ReadReceipts (
+    MessageID BIGINT NOT NULL,
+    UserID INT NOT NULL,
+    ReadAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    PRIMARY KEY (MessageID, UserID),
+    FOREIGN KEY (MessageID) REFERENCES Messages(MessageID) ON DELETE CASCADE,
+    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
+
+-- 2. История редактирования
+CREATE TABLE MessageHistory (
+    HistoryID BIGINT PRIMARY KEY IDENTITY(1,1),
+    MessageID BIGINT NOT NULL,
+    OldContent NVARCHAR(MAX) NOT NULL,
+    EditedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    FOREIGN KEY (MessageID) REFERENCES Messages(MessageID) ON DELETE CASCADE
+);
+
+-- 3. Опросы
+CREATE TABLE Polls (
+    PollID INT PRIMARY KEY IDENTITY(1,1),
+    ChatID INT NOT NULL,
+    CreatorUserID INT NOT NULL,
+    Question NVARCHAR(500) NOT NULL,
+    IsAnonymous BIT NOT NULL DEFAULT 1,
+    IsMultipleChoice BIT NOT NULL DEFAULT 0,
+    ExpiresAt DATETIME2 NULL,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    FOREIGN KEY (ChatID) REFERENCES Chats(ChatID) ON DELETE CASCADE,
+    FOREIGN KEY (CreatorUserID) REFERENCES Users(UserID)
+);
+
+CREATE TABLE PollOptions (
+    OptionID INT PRIMARY KEY IDENTITY(1,1),
+    PollID INT NOT NULL,
+    OptionText NVARCHAR(200) NOT NULL,
+    VoteCount INT NOT NULL DEFAULT 0,
+    FOREIGN KEY (PollID) REFERENCES Polls(PollID) ON DELETE CASCADE
+);
+
+CREATE TABLE PollVotes (
+    PollID INT NOT NULL,
+    OptionID INT NOT NULL,
+    UserID INT NOT NULL,
+    PRIMARY KEY (PollID, UserID),
+    FOREIGN KEY (PollID) REFERENCES Polls(PollID) ON DELETE CASCADE,
+    FOREIGN KEY (OptionID) REFERENCES PollOptions(OptionID),
+    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
 
 -- =======================================================
 -- ИНДЕКСЫ ДЛЯ УСКОРЕНИЯ ПОИСКА

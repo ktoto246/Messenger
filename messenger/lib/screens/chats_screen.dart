@@ -126,7 +126,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
         bool isPinnedB = b['isPinned'] ?? b['IsPinned'] ?? false;
         if (isPinnedA && !isPinnedB) return -1;
         if (!isPinnedA && isPinnedB) return 1;
-        return 0; 
+        
+        final timeA = DateTime.tryParse((a['lastMessageTime'] ?? a['LastMessageTime'] ?? '').toString()) ?? DateTime(0);
+        final timeB = DateTime.tryParse((b['lastMessageTime'] ?? b['LastMessageTime'] ?? '').toString()) ?? DateTime(0);
+        return timeB.compareTo(timeA); 
       });
     });
   }
@@ -333,7 +336,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 int? savedChatId = await _chatService.getOrCreateSavedMessages(currentUserId!);
                 if (savedChatId != null && mounted) {
                   if (context.mounted) {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId)));
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId, isSecret: false)));
                   }
                 }
               },
@@ -408,7 +411,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           int? savedChatId = await _chatService.getOrCreateSavedMessages(currentUserId!);
                           if (savedChatId != null && mounted) {
                             if (context.mounted) {
-                              await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId)));
+                              await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId, isSecret: false)));
                             }
                             _refreshChats();
                           }
@@ -622,7 +625,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                   if (widget.onChatSelected != null) {
                                     widget.onChatSelected!(chatId, finalChatName, otherUserId);
                                   } else {
-                                    await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: chatId, chatName: finalChatName, currentUserId: currentUserId!, otherUserId: otherUserId, isChannel: isChannel, isAdmin: isAdmin)));
+                                    await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: chatId, chatName: finalChatName, currentUserId: currentUserId!, otherUserId: otherUserId, isChannel: isChannel, isAdmin: isAdmin, isSecret: chat['isSecret'] ?? chat['IsSecret'] ?? false)));
                                     _refreshChats(); 
                                   }
                                 },

@@ -40,6 +40,14 @@ namespace WebApplication1.Controllers
             if (message.SentAt < DateTime.UtcNow.AddHours(-48)) return BadRequest("Время для редактирования истекло (48ч).");
             if (message.IsViewOnce) return BadRequest("Одноразовые сообщения нельзя редактировать.");
 
+            // Сохраняем историю
+            _context.MessageHistories.Add(new MessageHistory
+            {
+                MessageID = messageId,
+                OldContent = message.ContentText,
+                EditedAt = DateTime.UtcNow
+            });
+
             message.ContentText = newText;
             message.IsEdited = true;
             await _context.SaveChangesAsync();
@@ -166,7 +174,8 @@ namespace WebApplication1.Controllers
                 {
                     m.MessageID,
                     m.ChatID,
-                    ChatName = m.Chat.IsGroup ? m.Chat.GroupName : "Личный чат", // Упрощенно
+                    ChatName = m.Chat.IsGroup ? m.Chat.GroupName : 
+                               m.Chat.Participants.Where(p => p.UserID != CurrentUserId).Select(p => p.User.DisplayName).FirstOrDefault() ?? "Личный чат",
                     m.SenderUserID,
                     SenderName = m.SenderUser.DisplayName,
                     m.ContentText,
@@ -233,16 +242,14 @@ namespace WebApplication1.Controllers
             if (message.MessageType != "Audio" && message.MessageType != "VoiceNote") 
                 return BadRequest("Сообщение не является голосовым.");
 
+            if (!string.IsNullOrEmpty(message.TranscriptionText))
+                return Ok(new { transcription = message.TranscriptionText });
+
             // 🪄 Имитация расшифровки (Speech-to-Text)
-            // В реальном проекте здесь будет вызов OpenAI Whisper или Google STT
-            string mockTranscription = "Это расшифрованное голосовое сообщение. В реальности здесь будет текст, полученный через Whisper AI или другой сервис распознавания речи.";
+            string mockTranscription = "Это расшифрованное голосовое сообщение. В реальности здесь будет текст, полученный через Whisper AI.";
             
-            // Сохраняем в TranscriptionText для кэширования (если поле свободно)
-            if (string.IsNullOrEmpty(message.TranscriptionText))
-            {
-                message.TranscriptionText = mockTranscription;
-                await _context.SaveChangesAsync();
-            }
+            message.TranscriptionText = mockTranscription;
+            await _context.SaveChangesAsync();
 
             return Ok(new { transcription = message.TranscriptionText });
         }
@@ -257,11 +264,13 @@ namespace WebApplication1.Controllers
             var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == message.ChatID && cp.UserID == CurrentUserId);
             if (!isParticipant) return Forbid();
 
-            // В реальности нужна таблица MessageHistory. Имитируем:
-            return Ok(new[] {
-                new { Content = message.ContentText, EditedAt = message.SentAt.AddMinutes(5) },
-                new { Content = "Первоначальная версия сообщения", EditedAt = message.SentAt }
-            });
+            var history = await _context.MessageHistories
+                .Where(h => h.MessageID == messageId)
+                .OrderByDescending(h => h.EditedAt)
+                .Select(h => new { Content = h.OldContent, EditedAt = h.EditedAt })
+                .ToListAsync();
+
+            return Ok(history);
         }
     }
 }

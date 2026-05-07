@@ -75,9 +75,19 @@ class AuthService {
 
   static bool _isTokenExpired(String token) {
     try {
-      // В реальности нужно парсить JWT. Здесь просто имитируем логику.
-      return false; 
-    } catch (_) { return true; }
+      final parts = token.split('.');
+      if (parts.length != 3) return true;
+      
+      final payload = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      final data = jsonDecode(payload);
+      
+      if (data['exp'] == null) return false;
+      final expiry = DateTime.fromMillisecondsSinceEpoch(data['exp'] * 1000);
+      return DateTime.now().isAfter(expiry);
+    } catch (e) {
+      debugPrint("JWT parse error: $e");
+      return true;
+    }
   }
 
   Future<void> removeAccount(int userId) async {

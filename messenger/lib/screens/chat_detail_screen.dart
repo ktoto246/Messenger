@@ -47,8 +47,9 @@ class ChatDetailScreen extends StatefulWidget {
   final int? otherUserId;
   final bool isChannel;
   final bool isAdmin;
+  final bool isSecret;
 
-  const ChatDetailScreen({super.key, required this.chatId, required this.chatName, required this.currentUserId, this.otherUserId, this.isChannel = false, this.isAdmin = false});
+  const ChatDetailScreen({super.key, required this.chatId, required this.chatName, required this.currentUserId, this.otherUserId, this.isChannel = false, this.isAdmin = false, this.isSecret = false});
 
   @override
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
@@ -116,7 +117,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _isSecret = widget.chatName.contains('🔐');
+    _isSecret = widget.isSecret;
     _focusNode.addListener(() {
       if (_focusNode.hasFocus && mounted) setState(() => _showEmojiPicker = false);
     });
@@ -566,7 +567,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         // Секретный чат: шифруем
         String finalContent = text;
         if (_isSecret) {
-          finalContent = SecretChatService.encrypt(text, "dummy");
+          finalContent = SecretChatService.encrypt(text, widget.chatId.toString());
         }
         await _chatService.sendMessage(
           widget.chatId, widget.currentUserId, finalContent,
@@ -1106,7 +1107,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               final bool isMe = (msg['senderUserID'] ?? msg['SenderUserID']) == widget.currentUserId;
               String content = msg['contentText'] ?? msg['ContentText'] ?? '';
               if (_isSecret && SecretChatService.isEncrypted(content)) {
-                content = SecretChatService.decrypt(content, "dummy");
+                content = SecretChatService.decrypt(content, widget.chatId.toString());
               }
               final String time = _formatTime(msg['sentAt'] ?? msg['SentAt']);
               final bool isRead = msg['isRead'] ?? msg['IsRead'] ?? false; 

@@ -11,7 +11,7 @@ namespace WebApplication1.Models
         public int ChatID { get; set; }
         public int SenderUserID { get; set; }
 
-        public string ContentText { get; set; } 
+        public string? ContentText { get; set; } 
         public string? TranslatedText { get; set; } // 🌍 Перевод сообщения
         public string? TranscriptionText { get; set; } // 🎙️ Расшифровка голосового
 

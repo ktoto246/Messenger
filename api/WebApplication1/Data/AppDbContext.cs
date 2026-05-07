@@ -17,6 +17,11 @@ namespace WebApplication1.Data
         public DbSet<ChatFolder> ChatFolders { get; set; }
         public DbSet<Story> Stories { get; set; }
         public DbSet<UserTheme> UserThemes { get; set; }
+        public DbSet<ReadReceipt> ReadReceipts { get; set; }
+        public DbSet<MessageHistory> MessageHistories { get; set; }
+        public DbSet<Poll> Polls { get; set; }
+        public DbSet<PollOption> PollOptions { get; set; }
+        public DbSet<PollVote> PollVotes { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -59,6 +64,19 @@ namespace WebApplication1.Data
                 .HasOne(r => r.User)
                 .WithMany()
                 .HasForeignKey(r => r.UserID)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Composite keys for new tables
+            modelBuilder.Entity<ReadReceipt>()
+                .HasKey(rr => new { rr.MessageID, rr.UserID });
+
+            modelBuilder.Entity<PollVote>()
+                .HasKey(pv => new { pv.PollID, pv.UserID });
+
+            modelBuilder.Entity<PollVote>()
+                .HasOne(pv => pv.Option)
+                .WithMany()
+                .HasForeignKey(pv => pv.OptionID)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

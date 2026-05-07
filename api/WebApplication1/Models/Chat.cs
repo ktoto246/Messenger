@@ -12,6 +12,9 @@ namespace WebApplication1.Models
         public string? AvatarUrl { get; set; } // Ссылка на аватарку группы
         public bool IsGroup { get; set; } = false;
         public bool IsChannel { get; set; } = false;
+        public bool IsSavedMessages { get; set; } = false; // 🔖 Новое
+        public bool IsSecret { get; set; } = false; // 🔐 Новое
+        public int? AutoDeleteSeconds { get; set; } // ⏳ Новое
         public int? CreatorUserId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
