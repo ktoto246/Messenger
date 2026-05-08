@@ -143,8 +143,8 @@ app.UseCors("FlutterDevPolicy");
 
 app.UseHttpsRedirection();
 app.UseAuthentication();
-app.UseAuthorization();
 app.UseRateLimiter();
+app.UseAuthorization();
 app.UseStaticFiles();
 
 app.MapControllers();
@@ -154,9 +154,8 @@ app.MapHub<CallHub>("/callHub");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    // 🛡️ В продакшне НЕЛЬЗЯ использовать EnsureDeleted()
-    // db.Database.EnsureDeleted(); 
-    db.Database.EnsureCreated(); 
+    // 👈 ФИКС: Теперь применяем нормальные миграции вместо тупого создания
+    db.Database.Migrate(); 
 }
 
 app.Run();

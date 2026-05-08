@@ -72,7 +72,8 @@ namespace WebApplication1.Services
                     // 2. АВТОУДАЛЕНИЕ СООБЩЕНИЙ (ПО ТАЙМЕРУ ЧАТА)
                     var expiredByTimer = await context.Messages
                         .Include(m => m.Chat)
-                        .Where(m => !m.IsDeleted && m.Chat.AutoDeleteSeconds != null)
+                        // 👇 ФИКС: Игнорим запланированные сообщения (m.ScheduledAt == null)
+                        .Where(m => !m.IsDeleted && m.ScheduledAt == null && m.Chat.AutoDeleteSeconds != null)
                         .ToListAsync();
  
                     var toDeleteByTimer = expiredByTimer
@@ -86,7 +87,8 @@ namespace WebApplication1.Services
  
                     // 3. УДАЛЕНИЕ ОДНОРАЗОВЫХ СООБЩЕНИЙ (УЖЕ ПРОСМОТРЕННЫХ)
                     var expiredViewOnce = await context.Messages
-                        .Where(m => m.IsViewOnce && m.ViewedAt != null && !m.IsDeleted)
+                        // 👇 ФИКС: И тут тоже на всякий случай отсекаем запланированные
+                        .Where(m => m.IsViewOnce && m.ViewedAt != null && !m.IsDeleted && m.ScheduledAt == null)
                         .ToListAsync();
  
                     foreach (var msg in expiredViewOnce) { 

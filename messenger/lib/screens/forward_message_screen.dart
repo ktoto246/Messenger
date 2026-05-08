@@ -6,12 +6,14 @@ class ForwardMessageScreen extends StatefulWidget {
   final int currentUserId;
   final String textToForward;
   final String? mediaUrlToForward;
+  final String? originalMessageType; // <-- Добавили оригинальный тип
 
   const ForwardMessageScreen({
     super.key,
     required this.currentUserId,
     required this.textToForward,
     this.mediaUrlToForward,
+    this.originalMessageType, // <-- Принимаем его тут
   });
 
   @override
@@ -74,7 +76,8 @@ class _ForwardMessageScreenState extends State<ForwardMessageScreen> {
             chatId,
             widget.textToForward,
             mediaUrl: widget.mediaUrlToForward,
-            messageType: 'Media',
+            // Скармливаем оригинальный тип, иначе бэк сдохнет или фронт не отрендерит
+            messageType: widget.originalMessageType ?? 'Image', 
           );
         } else {
           await _chatService.sendMessage(chatId, widget.textToForward);

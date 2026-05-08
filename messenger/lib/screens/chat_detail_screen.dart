@@ -427,22 +427,38 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   // НОВЫЕ ФУНКЦИИ
   // ══════════════════════════════════════════════
 
-  /// Выбор и отправка файла/документа
-  Future<void> _pickAndSendFile() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: false);
+Future<void> _pickAndSendFile() async {
+    // Ограничиваем выбор только поддерживаемыми файлами
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      type: FileType.custom,
+      allowedExtensions: [
+        'jpg', 'jpeg', 'png', 'gif', 'mp4', 'mp3', 'wav', 'm4a', // Медиа
+        'pdf', 'doc', 'docx', 'txt', 'zip', 'rar'                // Документы
+      ],
+    );
+    
     if (result == null || result.files.isEmpty) return;
+    
     final file = File(result.files.first.path!);
     final fileName = result.files.first.name;
+    
     if (!mounted) return;
+    
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Отправка "$fileName"...')));
-    final mediaUrl = await _chatService.uploadFile(file);
+    final mediaUrl = await _chatService.uploadFile(file); // Предполагаю, что uploadFile дергает тот же UploadMedia
+    
     if (!mounted) return;
+    
     if (mediaUrl != null) {
       await _chatService.sendMessage(widget.chatId, fileName, mediaUrl: mediaUrl, messageType: 'File');
       await _loadMessages(isRefresh: true);
       _safeSignalRSend("ReceiveMessage", []);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ошибка загрузки файла 😔'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Ошибка загрузки. Проверь формат файла 😔'), 
+        backgroundColor: Colors.red
+      ));
     }
   }
 

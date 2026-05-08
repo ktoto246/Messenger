@@ -42,75 +42,78 @@ namespace WebApplication1.Controllers
         // 1. ПОЛУЧЕНИЕ СПИСКА ЧАТОВ
         // ==========================================
         [HttpGet]
-        public async Task<IActionResult> GetChats()
+public async Task<IActionResult> GetChats()
+{
+    var userId = CurrentUserId; // Берем из токена, а не из параметров
+
+    var chats = await _context.ChatParticipants
+        .Where(cp => cp.UserID == userId)
+        .Select(cp => new
         {
-            var userId = CurrentUserId; // Берем из токена, а не из параметров
-
-            var chats = await _context.ChatParticipants
-                .Where(cp => cp.UserID == userId)
-                .Select(cp => new
+            cp.Chat.ChatID,
+            cp.Chat.IsGroup,
+            cp.Chat.IsChannel,
+            cp.Chat.IsSecret,
+            cp.Chat.IsSavedMessages,
+            cp.IsArchived,
+            cp.IsAdmin,
+            cp.Chat.GroupName,
+            cp.IsPinned,
+            OtherUser = cp.Chat.Participants
+                .Where(p => p.UserID != userId)
+                .Select(p => new
                 {
-                    cp.Chat.ChatID,
-                    cp.Chat.IsGroup,
-                    cp.Chat.IsChannel,
-                    cp.Chat.IsSecret,
-                    cp.Chat.IsSavedMessages,
-                    cp.IsAdmin,
-                    cp.Chat.GroupName,
-                    cp.IsPinned,
-                    OtherUser = cp.Chat.Participants
-                        .Where(p => p.UserID != userId)
-                        .Select(p => new
-                        {
-                            p.User.UserID,
-                            p.User.DisplayName,
-                            p.User.AvatarUrl,
-                            p.User.IsOnline,
-                            p.User.LastActive
-                        })
-                        .FirstOrDefault(),
-                    cp.Chat.AvatarUrl,
-                    LastMessageText = cp.Chat.Messages
-                        .Where(m => !m.IsDeleted)
-                        .OrderByDescending(m => m.SentAt)
-                        .Select(m => m.ContentText)
-                        .FirstOrDefault(),
-                    LastMessageTime = cp.Chat.Messages
-                        .Where(m => !m.IsDeleted)
-                        .OrderByDescending(m => m.SentAt)
-                        .Select(m => (DateTime?)m.SentAt)
-                        .FirstOrDefault(),
-                    UnreadCount = cp.Chat.Messages
-                        .Count(m => m.SenderUserID != userId && 
-                                   (cp.LastReadMessageId == null || m.MessageID > cp.LastReadMessageId) && 
-                                   (cp.LastDeletedMessageId == null || m.MessageID > cp.LastDeletedMessageId) &&
-                                   !m.IsDeleted)
+                    p.User.UserID,
+                    p.User.DisplayName,
+                    p.User.AvatarUrl,
+                    p.User.IsOnline,
+                    p.User.LastActive
                 })
-                .ToListAsync();
+                .FirstOrDefault(),
+            cp.Chat.AvatarUrl,
+            LastMessageText = cp.Chat.Messages
+                .Where(m => !m.IsDeleted && m.ScheduledAt == null)
+                .OrderByDescending(m => m.SentAt)
+                .Select(m => m.ContentText)
+                .FirstOrDefault(),
+            LastMessageTime = cp.Chat.Messages
+                .Where(m => !m.IsDeleted && m.ScheduledAt == null)
+                .OrderByDescending(m => m.SentAt)
+                .Select(m => (DateTime?)m.SentAt)
+                .FirstOrDefault(),
+            UnreadCount = cp.Chat.Messages
+                .Count(m => m.SenderUserID != userId && 
+                           (cp.LastReadMessageId == null || m.MessageID > cp.LastReadMessageId) && 
+                           (cp.LastDeletedMessageId == null || m.MessageID > cp.LastDeletedMessageId) &&
+                           !m.IsDeleted && 
+                           m.ScheduledAt == null)
+        })
+        .ToListAsync();
 
-            var result = chats.Select(x => new
-            {
-                ChatId = x.ChatID,
-                ChatName = x.IsGroup ? x.GroupName : (x.OtherUser?.DisplayName ?? "Unknown"),
-                AvatarUrl = x.IsGroup ? x.AvatarUrl : x.OtherUser?.AvatarUrl,
-                OtherUserId = x.IsGroup ? null : (int?)x.OtherUser?.UserID,
-                IsOnline = x.IsGroup ? false : (x.OtherUser?.IsOnline ?? false),
-                LastActive = x.IsGroup ? null : x.OtherUser?.LastActive,
-                LastMessage = x.LastMessageText ?? "",
-                LastMessageTime = x.LastMessageTime,
-                UnreadCount = x.UnreadCount,
-                IsPinned = x.IsPinned,
-                IsChannel = x.IsChannel,
-                IsSecret = x.IsSecret,
-                IsAdmin = x.IsAdmin,
-                IsSavedMessages = x.IsSavedMessages
-            })
-            .OrderByDescending(x => x.IsPinned)
-            .ThenByDescending(x => x.LastMessageTime)
-            .ToList();
+    var result = chats.Select(x => new
+    {
+        ChatId = x.ChatID,
+        ChatName = x.IsGroup ? x.GroupName : (x.OtherUser?.DisplayName ?? "Unknown"),
+        AvatarUrl = x.IsGroup ? x.AvatarUrl : x.OtherUser?.AvatarUrl,
+        OtherUserId = x.IsGroup ? null : (int?)x.OtherUser?.UserID,
+        IsOnline = x.IsGroup ? false : (x.OtherUser?.IsOnline ?? false),
+        LastActive = x.IsGroup ? null : x.OtherUser?.LastActive,
+        LastMessage = x.LastMessageText ?? "",
+        LastMessageTime = x.LastMessageTime,
+        UnreadCount = x.UnreadCount,
+        IsPinned = x.IsPinned,
+        IsChannel = x.IsChannel,
+        IsSecret = x.IsSecret,
+        IsArchived = x.IsArchived,
+        IsAdmin = x.IsAdmin,
+        IsSavedMessages = x.IsSavedMessages
+    })
+    .OrderByDescending(x => x.IsPinned)
+    .ThenByDescending(x => x.LastMessageTime)
+    .ToList();
 
-            return Ok(result);
-        }
+    return Ok(result);
+}
 
         // ==========================================
         // 2. ИСТОРИЯ СООБЩЕНИЙ В ЧАТЕ
@@ -245,7 +248,7 @@ namespace WebApplication1.Controllers
                             .ToListAsync();
 
                         var tokens = participants
-                            .Where(p => !string.IsNullOrEmpty(p.User.FcmToken))
+                            .Where(p => !string.IsNullOrEmpty(p.User.FcmToken) && !p.IsMuted) // Учитываем только тех, кто не отключил уведомления
                             .Select(p => p.User.FcmToken)
                             .ToList();
 
@@ -354,14 +357,24 @@ namespace WebApplication1.Controllers
             if (file.Length > 50 * 1024 * 1024) return BadRequest("Файл слишком большой");
 
             // 🛡️ Белый список расширений и проверка контента
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".mp4", ".mp3", ".wav", ".m4a" };
+            // Добавили PDF, Word, текстовики и архивы
+var allowedExtensions = new[] { 
+    ".jpg", ".jpeg", ".png", ".gif", ".mp4", ".mp3", ".wav", ".m4a",
+    ".pdf", ".doc", ".docx", ".txt", ".zip", ".rar" 
+};
             var extension = Path.GetExtension(file.FileName).ToLower();
             if (!allowedExtensions.Contains(extension)) return BadRequest("Недопустимый тип файла");
 
             // 🛡️ Базовая проверка по ContentType (защита от переименованных исполняемых файлов)
-            if (!file.ContentType.StartsWith("image/") && !file.ContentType.StartsWith("video/") && !file.ContentType.StartsWith("audio/")) {
-                 return BadRequest("Контент файла не соответствует медиа-типу");
-            }
+            // Расширяем проверку контента
+if (!file.ContentType.StartsWith("image/") && 
+    !file.ContentType.StartsWith("video/") && 
+    !file.ContentType.StartsWith("audio/") && 
+    !file.ContentType.StartsWith("application/") && 
+    !file.ContentType.StartsWith("text/")) 
+{
+     return BadRequest("Контент файла не соответствует поддерживаемым типам");
+}
 
             var uniqueFileName = Guid.NewGuid().ToString() + extension;
             var filePath = _fileService.GetFilePath(uniqueFileName);
@@ -371,19 +384,6 @@ namespace WebApplication1.Controllers
                 await file.CopyToAsync(stream);
             }
             return Ok(new { mediaUrl = $"/api/media/{uniqueFileName}" });
-        }
-
-        [HttpPost("{chatId}/archive")]
-        public async Task<IActionResult> ArchiveChat(int chatId, [FromQuery] bool archive)
-        {
-            var participant = await _context.ChatParticipants
-                .FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
-
-            if (participant == null) return NotFound();
-
-            participant.IsArchived = archive;
-            await _context.SaveChangesAsync();
-            return Ok(new { isArchived = archive });
         }
 
         [HttpPut("{chatId}/pin")]
@@ -475,31 +475,60 @@ namespace WebApplication1.Controllers
         }
 
         [HttpPost("{chatId}/polls")]
-        public async Task<IActionResult> CreatePoll(int chatId, [FromBody] PollDto dto)
-        {
-            var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
-            if (!isParticipant) return Forbid();
+public async Task<IActionResult> CreatePoll(int chatId, [FromBody] PollDto dto)
+{
+    var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+    if (!isParticipant) return Forbid();
 
-            var poll = new Poll
-            {
-                ChatID = chatId,
-                CreatorUserID = CurrentUserId,
-                Question = dto.Question,
-                IsAnonymous = dto.IsAnonymous,
-                IsMultipleChoice = false, // Пока упрощенно
-                CreatedAt = DateTime.UtcNow
-            };
+    var poll = new Poll
+    {
+        ChatID = chatId,
+        CreatorUserID = CurrentUserId,
+        Question = dto.Question,
+        IsAnonymous = dto.IsAnonymous,
+        IsMultipleChoice = false, 
+        CreatedAt = DateTime.UtcNow
+    };
 
-            foreach (var optionText in dto.Options)
-            {
-                poll.Options.Add(new PollOption { OptionText = optionText });
-            }
+    foreach (var optionText in dto.Options)
+    {
+        poll.Options.Add(new PollOption { OptionText = optionText });
+    }
 
-            _context.Polls.Add(poll);
-            await _context.SaveChangesAsync();
+    _context.Polls.Add(poll);
+    await _context.SaveChangesAsync();
 
-            return Ok(new { success = true, pollId = poll.PollID });
-        }
+    // --- ФИКС НАЧИНАЕТСЯ ЗДЕСЬ ---
+    
+    // 1. Создаем сообщение типа "Poll", чтобы оно попало в историю чата
+    var pollMessage = new Message
+    {
+        ChatID = chatId,
+        SenderUserID = CurrentUserId,
+        ContentText = dto.Question, // Текст сообщения — это сам вопрос
+        SentAt = DateTime.UtcNow,
+        MessageType = "Poll",
+        IsRead = false
+    };
+
+    _context.Messages.Add(pollMessage);
+    await _context.SaveChangesAsync();
+
+    // 2. Уведомляем клиентов в реальном времени, чтобы Максимка сразу увидел опрос
+    await _hubContext.Clients.Group(chatId.ToString()).SendAsync("ReceiveMessage", new {
+        pollMessage.MessageID,
+        pollMessage.SenderUserID,
+        pollMessage.ContentText,
+        pollMessage.SentAt,
+        pollMessage.MessageType,
+        SenderName = (await _context.Users.FindAsync(CurrentUserId))?.DisplayName,
+        PollId = poll.PollID // Обязательно пробрасываем ID опроса, чтобы фронт знал, что грузить
+    });
+
+    // --- ФИКС ЗАКАНЧИВАЕТСЯ ЗДЕСЬ ---
+
+    return Ok(new { success = true, pollId = poll.PollID });
+}
 
         [HttpPut("{chatId}/archive")]
         public async Task<IActionResult> ArchiveChat(int chatId, [FromBody] bool archive)

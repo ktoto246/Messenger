@@ -19,6 +19,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController(); // 👈 Новый контроллер
   final _displayNameController = TextEditingController();
   
   final _authService = AuthService();
@@ -29,9 +30,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final username = _usernameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text; // 👈 Берем текст подтверждения
     final displayName = _displayNameController.text.trim();
 
-    if (username.isEmpty || email.isEmpty || password.isEmpty || displayName.isEmpty) {
+    // 👈 Добавили проверку confirmPassword на пустоту
+    if (username.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty || displayName.isEmpty) {
       UIUtils.showSnackBar(context, 'Пожалуйста, заполните все поля', isError: true);
       return;
     }
@@ -49,6 +52,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (password.length < 8) {
       UIUtils.showSnackBar(context, 'Пароль должен содержать минимум 8 символов для безопасности', isError: true);
+      return;
+    }
+
+    // 👈 Сама проверка на совпадение
+    if (password != confirmPassword) {
+      UIUtils.showSnackBar(context, 'Пароли не совпадают', isError: true);
       return;
     }
 
@@ -134,6 +143,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     CustomInputField(hintText: 'Отображаемое имя', isPassword: false, controller: _displayNameController, iconData: Icons.person_outline),
                     const SizedBox(height: 16),
                     CustomInputField(hintText: 'Пароль', isPassword: true, controller: _passwordController, iconData: Icons.lock_outline),
+                    const SizedBox(height: 16),
+                    // 👈 Новое поле в UI
+                    CustomInputField(hintText: 'Подтвердите пароль', isPassword: true, controller: _confirmPasswordController, iconData: Icons.lock_outline),
                   ],
                 ),
               ),

@@ -95,6 +95,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
     setState(() {
       _filteredChats = _allChats.where((chat) {
         final chatId = chat['chatID'] ?? chat['chatId'] ?? chat['ChatID'];
+
+        bool isArchived = chat['isArchived'] == true || chat['IsArchived'] == true;
+        if (isArchived) return false;
         
         // 📁 ФИЛЬТРАЦИЯ ПО ПАПКАМ
         if (_selectedFolderId != null) {
