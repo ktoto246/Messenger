@@ -26,7 +26,7 @@ namespace WebApplication1.Controllers
             // 🛡️ Проверка: есть ли сообщение с таким URL и состоит ли юзер в этом чате
             // URL может быть как полным, так и относительным, поэтому ищем по вхождению имени файла
             var message = await _context.Messages
-                .FirstOrDefaultAsync(m => m.ImageUrl != null && m.ImageUrl.Contains(fileName));
+                .FirstOrDefaultAsync(m => m.MediaUrl != null && m.MediaUrl.Contains(fileName));
 
             if (message == null) return NotFound();
 

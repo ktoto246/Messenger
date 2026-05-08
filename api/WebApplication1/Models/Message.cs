@@ -28,8 +28,8 @@ namespace WebApplication1.Models
         public bool IsDeleted { get; set; } = false;
         public bool IsEdited { get; set; } = false;
         public long? ReplyToMessageId { get; set; }
-        [Column("MediaUrl")]
-        public string? ImageUrl { get; set; }
+        public int? PollId { get; set; }
+        public string? MediaUrl { get; set; }
         public bool IsPinned { get; set; } = false;
 
         // Связи (Навигационные свойства)

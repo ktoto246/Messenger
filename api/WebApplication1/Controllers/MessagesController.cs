@@ -82,9 +82,9 @@ namespace WebApplication1.Controllers
             if (!canDeleteForEveryone) return Forbid();
 
             // 🛡️ Удаление файлов с диска
-            if (!string.IsNullOrEmpty(message.ImageUrl))
+            if (!string.IsNullOrEmpty(message.MediaUrl))
             {
-                _fileService.DeleteFile(message.ImageUrl);
+                _fileService.DeleteFile(message.MediaUrl);
             }
 
             message.IsDeleted = true;
@@ -160,6 +160,8 @@ namespace WebApplication1.Controllers
         public async Task<IActionResult> SearchMessages([FromQuery] string query)
         {
             if (string.IsNullOrWhiteSpace(query)) return BadRequest();
+            if (query.Length > 200) return BadRequest("Слишком длинный запрос");
+            query = query.Trim();
 
             // Ищем сообщения во всех чатах, где состоит пользователь
             var userChatIds = await _context.ChatParticipants
@@ -204,9 +206,9 @@ namespace WebApplication1.Controllers
                 message.ViewedAt = DateTime.UtcNow;
                 
                 // 🛡️ Физическое удаление файла сразу после просмотра
-                if (!string.IsNullOrEmpty(message.ImageUrl))
+                if (!string.IsNullOrEmpty(message.MediaUrl))
                 {
-                    _fileService.DeleteFile(message.ImageUrl);
+                    _fileService.DeleteFile(message.MediaUrl);
                 }
                 
                 await _context.SaveChangesAsync();
@@ -253,7 +255,7 @@ namespace WebApplication1.Controllers
                 return Ok(new { transcription = message.TranscriptionText });
 
             // 🪄 Имитация расшифровки (Speech-to-Text)
-            message.TranscriptionText = await _aiService.TranscribeAsync(message.ImageUrl ?? "");
+            message.TranscriptionText = await _aiService.TranscribeAsync(message.MediaUrl ?? "");
             await _context.SaveChangesAsync();
 
             return Ok(new { transcription = message.TranscriptionText });
@@ -272,7 +274,7 @@ namespace WebApplication1.Controllers
             var history = await _context.MessageHistories
                 .Where(h => h.MessageID == messageId)
                 .OrderByDescending(h => h.EditedAt)
-                .Select(h => new { Content = h.OldContent, EditedAt = h.EditedAt })
+                .Select(h => new { PreviousText = h.OldContent, EditedAt = h.EditedAt })
                 .ToListAsync();
 
             return Ok(history);

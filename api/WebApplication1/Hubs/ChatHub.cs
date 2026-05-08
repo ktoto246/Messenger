@@ -32,12 +32,12 @@ namespace WebApplication1.Hubs
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
+            // Не ставим IsOnline = false сразу — withAutomaticReconnect() переподключится
+            // через несколько секунд, что вызовет "мигание" статуса.
+            // OnlineStatusWorker поставит офлайн через 5 минут неактивности.
             var user = await _context.Users.FindAsync(CurrentUserId);
             if (user != null)
             {
-                // Мы не сбрасываем IsOnline сразу, так как может быть переподключение
-                // Но для простоты пока сбросим. OnlineStatusWorker подстрахует.
-                user.IsOnline = false;
                 user.LastActive = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
             }
@@ -74,16 +74,16 @@ namespace WebApplication1.Hubs
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, chatId);
         }
 
-        public async Task Typing(string chatIdStr, int userId)
+        public async Task Typing(string chatIdStr)
         {
-            if (int.TryParse(chatIdStr, out int chatId) && userId == CurrentUserId)
+            if (int.TryParse(chatIdStr, out int chatId))
             {
                 var isParticipant = await _context.ChatParticipants
                     .AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
 
                 if (isParticipant)
                 {
-                    await Clients.Group(chatIdStr).SendAsync("UserTyping", chatIdStr, userId);
+                    await Clients.Group(chatIdStr).SendAsync("UserTyping", chatIdStr, CurrentUserId);
                 }
             }
         }

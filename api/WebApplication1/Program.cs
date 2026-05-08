@@ -11,7 +11,6 @@ using Google.Apis.Auth.OAuth2;
 using WebApplication1.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -91,15 +90,16 @@ builder.Services.AddAuthentication(options =>
 });
 
 // --- CORS ---
+var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FlutterDevPolicy", policy =>
     {
-        // 🛡️ Для разработки разрешаем любые источники, чтобы Flutter Web/Desktop могли подключаться
-        policy.SetIsOriginAllowed(origin => true) 
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();           
+        if (allowedOrigins.Length > 0)
+            policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+        else
+            // Fallback для dev без настроенных origins — без AllowCredentials
+            policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
     });
 });
 
@@ -134,7 +134,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+if (builder.Configuration.GetValue<bool>("EnableSwagger"))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
@@ -143,6 +143,7 @@ if (app.Environment.IsDevelopment())
 app.UseCors("FlutterDevPolicy");
 
 app.UseHttpsRedirection();
+app.UseRateLimiter();
 app.UseAuthentication();
 
 // Reject tokens that have been explicitly revoked via POST /auth/logout
@@ -162,7 +163,6 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.UseRateLimiter();
 app.UseAuthorization();
 app.UseStaticFiles();
 

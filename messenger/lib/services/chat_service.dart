@@ -153,7 +153,7 @@ class ChatService {
         "contentText": text,
         "sentAt": DateTime.now().toIso8601String(),
         "messageType": messageType,
-        "imageUrl": mediaUrl,
+        "mediaUrl": mediaUrl,
         "isPending": true, // 👈 Флаг для UI
       };
       
@@ -179,6 +179,15 @@ class ChatService {
         ).timeout(const Duration(seconds: 5));
 
         if (response.statusCode == 200) {
+          // Remove fake pending messages for this chat from local cache
+          final msgBox = Hive.box('messages_box');
+          final cacheKey = 'msgs_${msg['chatId']}_0';
+          final existingJson = msgBox.get(cacheKey);
+          if (existingJson != null) {
+            final List<dynamic> msgs = jsonDecode(existingJson);
+            msgs.removeWhere((m) => m['isPending'] == true && m['chatID'] == msg['chatId']);
+            await msgBox.put(cacheKey, jsonEncode(msgs));
+          }
           await box.delete(key);
           debugPrint("Офлайн сообщение успешно отправлено! ✅");
         }
@@ -204,21 +213,7 @@ class ChatService {
     return null;
   }
 
-  Future<String?> uploadMedia(File file) async {
-    try {
-      final token = await AuthService.getToken();
-      var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/chats/uploadMedia'));
-      if (token != null) request.headers['Authorization'] = 'Bearer $token';
-      request.files.add(await http.MultipartFile.fromPath('file', file.path));
-      var response = await request.send();
-      if (response.statusCode == 200) {
-        var responseData = await response.stream.bytesToString();
-        var json = jsonDecode(responseData);
-        return json['mediaUrl']; 
-      }
-    } catch (e) { debugPrint("Ошибка загрузки медиа: $e"); }
-    return null;
-  }
+  Future<String?> uploadMedia(File file) => uploadFile(file);
 
   // 4. Поиск пользователей
   Future<List<dynamic>> searchUsers(String query) async {
@@ -434,14 +429,14 @@ class ChatService {
     // 2. На сервере (через API) для синхронизации между устройствами
     try {
       final headers = await _getHeaders();
-      await http.post(
+      await http.put(
         Uri.parse('$baseUrl/chats/$chatId/archive?archive=$archive'),
         headers: headers,
       );
     } catch (e) { debugPrint("Ошибка архивации на сервере: $e"); }
   }
 
-  // 22. СОЗДАТЬ ОПРОС
+  // 23. СОЗДАТЬ ОПРОС
   Future<void> createPoll(int chatId, int userId, Map<String, dynamic> pollData) async {
     try {
       final headers = await _getHeaders();
@@ -453,7 +448,7 @@ class ChatService {
     } catch (e) { debugPrint("Ошибка createPoll: $e"); }
   }
 
-  // 23. ПРОГОЛОСОВАТЬ В ОПРОСЕ
+  // 24. ПРОГОЛОСОВАТЬ В ОПРОСЕ
   Future<void> votePoll(int pollId, int optionIndex) async {
     try {
       final headers = await _getHeaders();
@@ -465,7 +460,7 @@ class ChatService {
     } catch (e) { debugPrint("Ошибка votePoll: $e"); }
   }
 
-  // 24. ОТПРАВИТЬ ФАЙЛ (документ)
+  // 25. ОТПРАВИТЬ ФАЙЛ (документ)
   Future<String?> uploadFile(File file) async {
     try {
       final token = await AuthService.getToken();

@@ -27,7 +27,8 @@ namespace WebApplication1.Controllers
             if (userId != CurrentUserId) return Forbid();
 
             var calls = await _context.Calls
-                .Where(c => c.CallerUserID == userId || c.ReceiverUserID == userId)
+                .Where(c => (c.CallerUserID == userId && !c.DeletedByCaller) ||
+                            (c.ReceiverUserID == userId && !c.DeletedByReceiver))
                 .OrderByDescending(c => c.StartedAt)
                 .Select(c => new {
                     c.CallID,
@@ -55,9 +56,13 @@ namespace WebApplication1.Controllers
                 .Where(c => c.CallerUserID == userId || c.ReceiverUserID == userId)
                 .ToListAsync();
 
-            _context.Calls.RemoveRange(userCalls);
-            await _context.SaveChangesAsync();
+            foreach (var call in userCalls)
+            {
+                if (call.CallerUserID == userId) call.DeletedByCaller = true;
+                if (call.ReceiverUserID == userId) call.DeletedByReceiver = true;
+            }
 
+            await _context.SaveChangesAsync();
             return Ok(new { success = true });
         }
     }

@@ -86,7 +86,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   CameraController? _cameraController;
   List<CameraDescription> _cameras = [];
   bool _isCameraInitialized = false;
-  int _selectedCameraIndex = 1; 
+  bool _isInitializingCamera = false;
+  int _selectedCameraIndex = 1;
   bool _isFlashOn = false;
   bool _showEmojiPicker = false;
   final FocusNode _focusNode = FocusNode();
@@ -151,19 +152,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   Future<void> _initCamera({int cameraIndex = 1}) async {
+    if (_isInitializingCamera) return;
+    _isInitializingCamera = true;
     try {
       _cameras = await availableCameras();
       if (_cameras.isEmpty) return;
       _selectedCameraIndex = cameraIndex < _cameras.length ? cameraIndex : 0;
-      // Диспозим старый контроллер перед созданием нового
       await _cameraController?.dispose();
+      _cameraController = null;
       _cameraController = CameraController(_cameras[_selectedCameraIndex], ResolutionPreset.medium);
-      // Обязательно инициализируем перед использованием
       await _cameraController!.initialize();
       if (mounted) setState(() => _isCameraInitialized = true);
     } catch (e) {
       debugPrint("Camera init error: $e");
       if (mounted) setState(() => _isCameraInitialized = false);
+    } finally {
+      _isInitializingCamera = false;
     }
   }
 
@@ -289,7 +293,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       await _chatService.sendMessage(widget.chatId, "", replyToMessageId: replyId, mediaUrl: mediaUrl, messageType: messageType);
       _cancelAction();
       await _loadMessages(isRefresh: true);
-      _safeSignalRSend("ReceiveMessage", []);
     }
   }
 
@@ -453,7 +456,6 @@ Future<void> _pickAndSendFile() async {
     if (mediaUrl != null) {
       await _chatService.sendMessage(widget.chatId, fileName, mediaUrl: mediaUrl, messageType: 'File');
       await _loadMessages(isRefresh: true);
-      _safeSignalRSend("ReceiveMessage", []);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Ошибка загрузки. Проверь формат файла 😔'), 
@@ -471,7 +473,6 @@ Future<void> _pickAndSendFile() async {
     if (pollData == null || !mounted) return;
     await _chatService.createPoll(widget.chatId, widget.currentUserId, pollData);
     await _loadMessages(isRefresh: true);
-    _safeSignalRSend("ReceiveMessage", []);
   }
 
   /// Сохранить черновик и выйти
@@ -499,7 +500,7 @@ Future<void> _pickAndSendFile() async {
 
   /// Переслать выделенные сообщения
   void _forwardSelected() {
-    final texts = _selectedMessages.map((m) => m['content'] ?? m['ContentText'] ?? '').join('\n— — —\n');
+    final texts = _selectedMessages.map((m) => m['contentText'] ?? m['ContentText'] ?? '').join('\n— — —\n');
     Navigator.push(context, MaterialPageRoute(builder: (_) => ForwardMessageScreen(
       currentUserId: widget.currentUserId,
       textToForward: texts,
@@ -581,7 +582,11 @@ Future<void> _pickAndSendFile() async {
       } else {
         int? replyId = _replyingToMessage != null ? (_replyingToMessage['messageID'] ?? _replyingToMessage['MessageID']) : null;
         // Передаём запланированное время, если оно было выбрано
-        // Секретный чат: шифруем
+        // TODO(security): Replace with proper E2E using Diffie-Hellman key exchange.
+        // Current implementation uses chatId as the key which is NOT secure —
+        // all participants and anyone who knows the chatId can decrypt messages.
+        // Real fix: generate DH key pair on device, exchange public keys via server,
+        // derive shared secret locally (never send to server).
         String finalContent = text;
         if (_isSecret) {
           finalContent = SecretChatService.encrypt(text, widget.chatId.toString());
@@ -599,7 +604,6 @@ Future<void> _pickAndSendFile() async {
       _cancelAction();
       if (_scrollController.hasClients) _scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       await _loadMessages(isRefresh: true);
-      _safeSignalRSend("ReceiveMessage", []);
     } catch (e) {
       _handleError(e);
     }
@@ -629,7 +633,6 @@ Future<void> _pickAndSendFile() async {
       // Отправляем как изображение
       await _chatService.sendMessage(widget.chatId, "", messageType: "Image", mediaUrl: gifUrl);
       await _loadMessages(isRefresh: true);
-      _safeSignalRSend("ReceiveMessage", []);
     }
   }
 
@@ -709,18 +712,17 @@ Future<void> _pickAndSendFile() async {
   Future<void> _sendSticker(String stickerUrl) async {
     await _chatService.sendMessage(widget.chatId, "", messageType: "Sticker", mediaUrl: stickerUrl);
     await _loadMessages(isRefresh: true);
-    _safeSignalRSend("ReceiveMessage", []);
   }
 
   void _showStickerPicker() {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final List<String> sampleStickers = [
-      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/3o7TKv6vLzH2v4v4vO/giphy.gif",
-      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/l41lTfO3vD7zH8k9y/giphy.gif",
-      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/3o7TKVUn7iM8FMEU24/giphy.gif",
-      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/3o7TKvUn7iM8FMEU24/giphy.gif",
-      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/3o7TKVUn7iM8FMEU24/giphy.gif",
-      "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZzZxeXo4NnBxeHoxeXoxeXoxeXoxeXoxeXoxeXoxeXoxeXomZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PXM/3o7TKVUn7iM8FMEU24/giphy.gif",
+      "https://media.giphy.com/media/3o7TKv6vLzH2v4v4vO/giphy.gif",
+      "https://media.giphy.com/media/l41lTfO3vD7zH8k9y/giphy.gif",
+      "https://media.giphy.com/media/3o7TKVUn7iM8FMEU24/giphy.gif",
+      "https://media.giphy.com/media/xT0xeJpnrWC4XWblEk/giphy.gif",
+      "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+      "https://media.giphy.com/media/3ohzdIuqJoo8QdKlnW/giphy.gif",
     ];
 
     showModalBottomSheet(
@@ -797,7 +799,7 @@ Future<void> _pickAndSendFile() async {
                 const SizedBox(height: 10),
                 ListTile(leading: const Icon(Icons.reply, color: Colors.blue), title: Text('Ответить', style: TextStyle(color: sheetText)), onTap: () { Navigator.pop(context); _onSwipeToReply(msg); }),
                 ListTile(leading: Icon((msg['isPinned'] ?? msg['IsPinned'] ?? false) ? Icons.push_pin_outlined : Icons.push_pin, color: Colors.blue), title: Text((msg['isPinned'] ?? msg['IsPinned'] ?? false) ? 'Открепить' : 'Закрепить', style: TextStyle(color: sheetText)), 
-                  onTap: () async { Navigator.pop(context); await _chatService.togglePinMessage(msgId); _safeSignalRSend("ReceiveMessage", []); _loadMessages(isRefresh: true); }
+                  onTap: () async { Navigator.pop(context); await _chatService.togglePinMessage(msgId); _loadMessages(isRefresh: true); }
                 ),
                 if (text.isNotEmpty) ListTile(leading: Icon(Icons.copy, color: isDark ? Colors.white54 : Colors.black54), title: Text('Скопировать', style: TextStyle(color: sheetText)), onTap: () { Clipboard.setData(ClipboardData(text: text)); Navigator.pop(context); }),
                 // ПЕРЕВОД — реальный TranslationService
@@ -891,7 +893,7 @@ Future<void> _pickAndSendFile() async {
                   },
                 ),
                 if (isMe) ListTile(leading: Icon(Icons.edit, color: isDark ? Colors.white54 : Colors.black54), title: Text('Изменить', style: TextStyle(color: sheetText)), onTap: () { Navigator.pop(context); setState(() { _replyingToMessage = null; _editingMessage = msg; _messageController.text = text; }); }),
-                if (isMe) ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('Удалить', style: TextStyle(color: Colors.red)), onTap: () async { Navigator.pop(context); await _chatService.deleteMessage(msgId); _safeSignalRSend("ReceiveMessage", []); _loadMessages(isRefresh: true); }),
+                if (isMe) ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('Удалить', style: TextStyle(color: Colors.red)), onTap: () async { Navigator.pop(context); await _chatService.deleteMessage(msgId); _loadMessages(isRefresh: true); }),
                 const SizedBox(height: 10),
               ],
             ),
@@ -937,7 +939,6 @@ Future<void> _pickAndSendFile() async {
     final locationString = "${position.latitude},${position.longitude}";
     await _chatService.sendMessage(widget.chatId, locationString, messageType: "Location");
     await _loadMessages(isRefresh: true);
-    _safeSignalRSend("ReceiveMessage", []);
   }
 
 
@@ -1121,7 +1122,9 @@ Future<void> _pickAndSendFile() async {
             groupSeparatorBuilder: (DateTime date) => _buildDateHeader(date),
             itemBuilder: (context, msg) {
               final index = _messages.indexOf(msg);
-              final bool isMe = (msg['senderUserID'] ?? msg['SenderUserID']) == widget.currentUserId;
+              // Normalize key lookup to be case-insensitive
+              final senderId = msg['senderUserID'] ?? msg['SenderUserID'] ?? msg['senderuserid'];
+              final bool isMe = senderId == widget.currentUserId;
               String content = msg['contentText'] ?? msg['ContentText'] ?? '';
               if (_isSecret && SecretChatService.isEncrypted(content)) {
                 content = SecretChatService.decrypt(content, widget.chatId.toString());
@@ -1790,18 +1793,30 @@ Future<void> _pickAndSendFile() async {
   // ── Выбор фото/видео из галереи или камеры ──
   Future<void> _pickImageOrVideo({required bool fromGallery}) async {
     final picker = ImagePicker();
-    final XFile? file = fromGallery
-        ? await picker.pickImage(source: ImageSource.gallery, imageQuality: 85)
-        : await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    XFile? file;
+    String messageType = 'Image';
+    if (fromGallery) {
+      // pickMedia allows selecting both images and videos from gallery
+      file = await picker.pickMedia();
+      if (file != null) {
+        final ext = file.path.split('.').last.toLowerCase();
+        if (['mp4', 'mov', 'avi', 'webm'].contains(ext)) messageType = 'Video';
+      }
+    } else {
+      file = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    }
     if (file == null || !mounted) return;
-    
-    final editedFile = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => MediaEditorScreen(imageFile: File(file.path))),
-    );
-    
-    if (editedFile != null && editedFile is File) {
-      await _uploadAndSendMedia(editedFile, 'Image');
+
+    if (messageType == 'Image') {
+      final editedFile = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => MediaEditorScreen(imageFile: File(file!.path))),
+      );
+      if (editedFile != null && editedFile is File) {
+        await _uploadAndSendMedia(editedFile, 'Image');
+      }
+    } else {
+      await _uploadAndSendMedia(File(file.path), messageType);
     }
   }
 

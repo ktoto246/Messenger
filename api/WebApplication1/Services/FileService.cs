@@ -9,7 +9,7 @@ namespace WebApplication1.Services
 
         public FileService()
         {
-            _uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "App_Data", "uploads");
+            _uploadsFolder = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "App_Data", "uploads"));
             if (!Directory.Exists(_uploadsFolder))
             {
                 Directory.CreateDirectory(_uploadsFolder);
@@ -29,18 +29,19 @@ namespace WebApplication1.Services
 
             try
             {
-                // Извлекаем имя файла из URL (например, /api/media/guid.jpg)
                 var fileName = Path.GetFileName(fileUrl);
-                var filePath = GetFilePath(fileName);
+                if (string.IsNullOrEmpty(fileName) || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                    return;
+
+                var filePath = Path.GetFullPath(GetFilePath(fileName));
+                if (!filePath.StartsWith(_uploadsFolder, StringComparison.OrdinalIgnoreCase))
+                    return;
 
                 if (File.Exists(filePath))
-                {
                     File.Delete(filePath);
-                }
             }
             catch (Exception ex)
             {
-                // Логируем ошибку, но не прерываем выполнение
                 Console.WriteLine($"Error deleting file {fileUrl}: {ex.Message}");
             }
         }

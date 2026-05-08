@@ -66,15 +66,16 @@ class AuthService {
       (s) => s['userId'] == userId,
       orElse: () => throw Exception('ACCOUNT_NOT_FOUND'),
     );
-    
+
     if (_isTokenExpired(session['token'])) {
       debugPrint("Сессия истекла для пользователя $userId");
       throw Exception('SESSION_EXPIRED');
     }
-    
+
     await _storage.write(key: 'userId', value: userId.toString());
     await _storage.write(key: 'token', value: session['token']);
-    startHeartbeat(); // Перезапускаем heartbeat для нового юзера
+    stopHeartbeat();
+    startHeartbeat();
   }
 
   static bool _isTokenExpired(String token) {
@@ -98,13 +99,16 @@ class AuthService {
     final sessions = await getAccounts();
     sessions.removeWhere((s) => s['userId'] == userId);
     await _storage.write(key: 'sessions', value: jsonEncode(sessions));
-    
+
     final currentId = await getCurrentUserId();
     if (currentId == userId) {
       if (sessions.isNotEmpty) {
         await switchAccount(sessions.first['userId']);
       } else {
-        await logout();
+        // No more accounts — clear active session directly (avoid recursion with logout)
+        stopHeartbeat();
+        await _storage.delete(key: 'userId');
+        await _storage.delete(key: 'token');
       }
     }
   }
@@ -140,7 +144,12 @@ class AuthService {
 
   Future<void> logout() async {
     final userId = await getCurrentUserId();
-    if (userId != null) await removeAccount(userId);
+    if (userId != null) {
+      final sessions = await getAccounts();
+      sessions.removeWhere((s) => s['userId'] == userId);
+      await _storage.write(key: 'sessions', value: jsonEncode(sessions));
+    }
+    stopHeartbeat();
     await _storage.delete(key: 'userId');
     await _storage.delete(key: 'token');
   }

@@ -22,11 +22,14 @@ namespace WebApplication1.Controllers
         private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
         [HttpGet]
-        public async Task<IActionResult> GetUsers()
+        public async Task<IActionResult> GetUsers([FromQuery] int skip = 0, [FromQuery] int take = 50)
         {
+            take = Math.Clamp(take, 1, 100);
             var users = await _context.Users
+                .OrderBy(u => u.DisplayName)
+                .Skip(skip)
+                .Take(take)
                 .Select(u => new { u.UserID, u.DisplayName, u.Username, u.AvatarUrl, u.IsOnline, u.Bio })
-                .Take(50)
                 .ToListAsync();
             return Ok(users);
         }
@@ -57,21 +60,22 @@ namespace WebApplication1.Controllers
 
             return Ok(new
             {
-                user.UserID, 
-                user.DisplayName, 
-                user.Username, 
-                PhoneNumber = isSelf || (!user.PrivacyPhone) ? user.PhoneNumber : null, 
-                user.Bio, 
-                AvatarUrl = isSelf || (!user.PrivacyAvatar) ? user.AvatarUrl : null,
-                user.IsOnline, 
-                user.LastActive, 
-                user.CreatedAt, 
-                DateOfBirth = isSelf ? user.DateOfBirth : null, 
-                user.MusicUrl, 
+                user.UserID,
+                user.DisplayName,
+                user.Username,
+                PhoneNumber = isSelf || !user.PrivacyPhone ? user.PhoneNumber : null,
+                user.Bio,
+                AvatarUrl = isSelf || !user.PrivacyAvatar ? user.AvatarUrl : null,
+                IsOnline = isSelf || !user.PrivacyOnlineStatus ? user.IsOnline : (bool?)null,
+                LastActive = isSelf || !user.PrivacyOnlineStatus ? user.LastActive : null,
+                user.CreatedAt,
+                DateOfBirth = isSelf ? user.DateOfBirth : null,
+                user.MusicUrl,
                 user.ThemeColor,
-                user.PrivacyPhone, 
-                user.PrivacyAvatar, 
-                user.PrivacyMessages, 
+                user.PrivacyPhone,
+                user.PrivacyAvatar,
+                user.PrivacyMessages,
+                user.PrivacyOnlineStatus,
                 user.IsDarkMode
             });
         }
@@ -113,21 +117,32 @@ namespace WebApplication1.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            // Ищем пользователей в радиусе 10км
-            var nearbyUsers = await _context.Users
-                .Where(u => u.UserID != CurrentUserId && u.Latitude != null && u.Longitude != null)
+            // Bbox-фильтр в SQL: ±0.1° ≈ ±11км, отсекаем большинство записей до загрузки в память
+            double latDelta = 0.1;
+            double lonDelta = 0.1;
+            var candidatesQuery = _context.Users
+                .Where(u => u.UserID != CurrentUserId
+                    && u.Latitude != null && u.Longitude != null
+                    && u.Latitude >= location.Latitude - latDelta
+                    && u.Latitude <= location.Latitude + latDelta
+                    && u.Longitude >= location.Longitude - lonDelta
+                    && u.Longitude <= location.Longitude + lonDelta);
+
+            var candidates = await candidatesQuery
+                .Select(u => new { u.UserID, u.DisplayName, u.AvatarUrl, u.IsOnline, u.Latitude, u.Longitude })
                 .ToListAsync();
 
-            var result = nearbyUsers
+            var radiusMeters = location.RadiusKm * 1000;
+            var result = candidates
                 .Select(u => new
                 {
-                    UserID = u.UserID,
-                    DisplayName = u.DisplayName,
-                    AvatarUrl = u.AvatarUrl,
-                    IsOnline = u.IsOnline,
+                    u.UserID,
+                    u.DisplayName,
+                    u.AvatarUrl,
+                    u.IsOnline,
                     DistanceMeters = CalculateDistance(location.Latitude, location.Longitude, u.Latitude!.Value, u.Longitude!.Value)
                 })
-                .Where(u => u.DistanceMeters <= (location.RadiusKm * 1000)) 
+                .Where(u => u.DistanceMeters <= radiusMeters)
                 .OrderBy(u => u.DistanceMeters)
                 .ToList();
 

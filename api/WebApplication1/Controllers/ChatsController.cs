@@ -121,6 +121,9 @@ public async Task<IActionResult> GetChats()
         [HttpGet("{chatId}/messages")]
         public async Task<IActionResult> GetMessages(int chatId, [FromQuery] long? lastMessageId = null, [FromQuery] int take = 30)
         {
+            // 🛡️ Ограничение размера выборки (защита от DoS)
+            take = Math.Clamp(take, 1, 100);
+
             // 🛡️ Проверка: является ли пользователь участником этого чата
             var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
             if (participant == null) return Forbid();
@@ -176,7 +179,7 @@ public async Task<IActionResult> GetChats()
                         .ToList(),
                     m.IsViewOnce,
                     IsExpired = m.IsViewOnce && m.ViewedAt != null,
-                    ImageUrl = (m.IsViewOnce && m.ViewedAt != null) ? null : m.ImageUrl, // 🛡️ Защита: не отдаем URL если просмотрено
+                    MediaUrl = (m.IsViewOnce && m.ViewedAt != null) ? null : m.MediaUrl,
                     m.TranslatedText
                 };
             }).ToList();
@@ -190,28 +193,27 @@ public async Task<IActionResult> GetChats()
         [HttpPost("{chatId}/messages")]
         public async Task<IActionResult> SendMessage(int chatId, [FromBody] SendMessageDto dto)
         {
-            // 🛡️ Проверка участия
-            var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
-            if (!isParticipant) return Forbid();
+            // 🛡️ Проверка участия + загружаем User для DisplayName
+            var participant = await _context.ChatParticipants
+                .Include(cp => cp.User)
+                .FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+            if (participant == null) return Forbid();
 
             // 📢 Проверка Канала (только админы пишут)
             var chat = await _context.Chats.FindAsync(chatId);
-            if (chat != null && chat.IsChannel)
-            {
-                var participant = await _context.ChatParticipants.FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
-                if (participant == null || !participant.IsAdmin) return Forbid();
-            }
+            if (chat != null && chat.IsChannel && !participant.IsAdmin)
+                return Forbid();
 
             var newMessage = new Message
             {
                 ChatID = chatId,
-                SenderUserID = CurrentUserId, 
+                SenderUserID = CurrentUserId,
                 ContentText = dto.Content ?? "",
                 SentAt = dto.ScheduledAt ?? DateTime.UtcNow,
-                ScheduledAt = dto.ScheduledAt, // Если есть - планируем
+                ScheduledAt = dto.ScheduledAt,
                 IsRead = false,
                 IsEdited = false,
-                ImageUrl = dto.MediaUrl,
+                MediaUrl = dto.MediaUrl,
                 ReplyToMessageId = dto.ReplyToMessageId,
                 MessageType = dto.MessageType,
                 IsViewOnce = dto.IsViewOnce
@@ -221,16 +223,15 @@ public async Task<IActionResult> GetChats()
             await _context.SaveChangesAsync();
 
             // ⚡️ РЕАЛЬНОЕ ВРЕМЯ (SignalR): Уведомляем участников чата
-            // Передаем весь объект сообщения, чтобы клиенты не делали лишних запросов
             await _hubContext.Clients.Group(chatId.ToString()).SendAsync("ReceiveMessage", new {
                 newMessage.MessageID,
                 newMessage.SenderUserID,
                 newMessage.ContentText,
                 newMessage.SentAt,
-                newMessage.ImageUrl,
+                newMessage.MediaUrl,
                 newMessage.MessageType,
                 newMessage.ReplyToMessageId,
-                SenderName = (await _context.Users.FindAsync(CurrentUserId))?.DisplayName,
+                SenderName = participant.User?.DisplayName,
                 newMessage.IsViewOnce
             });
 
@@ -258,7 +259,7 @@ public async Task<IActionResult> GetChats()
                             string title = chatInfo?.IsGroup == true ? (chatInfo.GroupName ?? "Группа") : (sender?.DisplayName ?? "Новое сообщение");
                             string body = chatInfo?.IsGroup == true ? $"{sender?.DisplayName}: {newMessage.ContentText}" : (newMessage.ContentText ?? "Медиафайл");
                             
-                            await scopedPushService.SendNotificationAsync(tokens, title, body, newMessage.ImageUrl);
+                            await scopedPushService.SendNotificationAsync(tokens, title, body, newMessage.MediaUrl);
                         }
                     } catch { /* Игнорируем ошибки пушей */ }
                 }
@@ -285,27 +286,35 @@ public async Task<IActionResult> GetChats()
             if (lastMessage != null)
             {
                 participant.LastReadMessageId = lastMessage.MessageID;
-                
-                // 1. Помечаем сообщения в личках как прочитанные
-                var chat = await _context.Chats.FindAsync(chatId);
-                if (chat != null && !chat.IsGroup)
+
+                // Помечаем ВСЕ непрочитанные сообщения в чате как прочитанные
+                var unreadMessages = await _context.Messages
+                    .Where(m => m.ChatID == chatId &&
+                           m.SenderUserID != userId &&
+                           !m.IsRead &&
+                           m.MessageID <= lastMessage.MessageID)
+                    .ToListAsync();
+
+                foreach (var m in unreadMessages)
                 {
-                    var unreadMessages = await _context.Messages
-                        .Where(m => m.ChatID == chatId && m.SenderUserID != userId && !m.IsRead)
-                        .ToListAsync();
-                    
-                    foreach(var m in unreadMessages) { 
-                        m.IsRead = true; 
-                        m.ReadAt = DateTime.UtcNow; 
+                    m.IsRead = true;
+                    m.ReadAt = DateTime.UtcNow;
+                }
+
+                // Добавляем ReadReceipt для всех непрочитанных (для групп)
+                var existingReceipts = await _context.ReadReceipts
+                    .Where(rr => rr.MessageID <= lastMessage.MessageID && rr.UserID == userId)
+                    .Select(rr => rr.MessageID)
+                    .ToListAsync();
+
+                foreach (var msg in unreadMessages)
+                {
+                    if (!existingReceipts.Contains(msg.MessageID))
+                    {
+                        _context.ReadReceipts.Add(new ReadReceipt { MessageID = msg.MessageID, UserID = userId });
                     }
                 }
 
-                // 2. Добавляем ReadReceipt (для групп)
-                if (!await _context.ReadReceipts.AnyAsync(rr => rr.MessageID == lastMessage.MessageID && rr.UserID == userId))
-                {
-                    _context.ReadReceipts.Add(new ReadReceipt { MessageID = lastMessage.MessageID, UserID = userId });
-                }
-                
                 await _context.SaveChangesAsync();
             }
 
@@ -356,25 +365,44 @@ public async Task<IActionResult> GetChats()
             // 🛡️ Ограничение размера (50MB)
             if (file.Length > 50 * 1024 * 1024) return BadRequest("Файл слишком большой");
 
-            // 🛡️ Белый список расширений и проверка контента
-            // Добавили PDF, Word, текстовики и архивы
-var allowedExtensions = new[] { 
-    ".jpg", ".jpeg", ".png", ".gif", ".mp4", ".mp3", ".wav", ".m4a",
-    ".pdf", ".doc", ".docx", ".txt", ".zip", ".rar" 
-};
             var extension = Path.GetExtension(file.FileName).ToLower();
-            if (!allowedExtensions.Contains(extension)) return BadRequest("Недопустимый тип файла");
 
-            // 🛡️ Базовая проверка по ContentType (защита от переименованных исполняемых файлов)
-            // Расширяем проверку контента
-if (!file.ContentType.StartsWith("image/") && 
-    !file.ContentType.StartsWith("video/") && 
-    !file.ContentType.StartsWith("audio/") && 
-    !file.ContentType.StartsWith("application/") && 
-    !file.ContentType.StartsWith("text/")) 
-{
-     return BadRequest("Контент файла не соответствует поддерживаемым типам");
-}
+            // 🛡️ Whitelist конкретных MIME-типов (защита от переименованных исполняемых файлов)
+            var allowedMimeTypes = new[]
+            {
+                "image/jpeg", "image/png", "image/gif", "image/webp",
+                "video/mp4", "video/quicktime",
+                "audio/mpeg", "audio/wav", "audio/m4a", "audio/ogg",
+                "application/pdf",
+                "application/zip",
+                "text/plain"
+            };
+
+            if (!allowedMimeTypes.Contains(file.ContentType))
+                return BadRequest("Недопустимый тип файла");
+
+            // 🛡️ Проверка расширения файла соответствует MIME-типу
+            var extensionToMimeMap = new Dictionary<string, string[]>
+            {
+                { ".jpg", new[] { "image/jpeg" } },
+                { ".jpeg", new[] { "image/jpeg" } },
+                { ".png", new[] { "image/png" } },
+                { ".gif", new[] { "image/gif" } },
+                { ".webp", new[] { "image/webp" } },
+                { ".mp4", new[] { "video/mp4" } },
+                { ".mov", new[] { "video/quicktime" } },
+                { ".mp3", new[] { "audio/mpeg" } },
+                { ".wav", new[] { "audio/wav" } },
+                { ".m4a", new[] { "audio/m4a" } },
+                { ".ogg", new[] { "audio/ogg" } },
+                { ".pdf", new[] { "application/pdf" } },
+                { ".zip", new[] { "application/zip" } },
+                { ".txt", new[] { "text/plain" } }
+            };
+
+            if (!extensionToMimeMap.ContainsKey(extension) ||
+                !extensionToMimeMap[extension].Contains(file.ContentType))
+                return BadRequest("Расширение файла не соответствует типу контента");
 
             var uniqueFileName = Guid.NewGuid().ToString() + extension;
             var filePath = _fileService.GetFilePath(uniqueFileName);
@@ -469,66 +497,60 @@ if (!file.ContentType.StartsWith("image/") &&
             return Ok(new { success = true, autoDeleteSeconds = dto.AutoDeleteSeconds });
         }
 
-        public class AutoDeleteDto
-        {
-            public int? AutoDeleteSeconds { get; set; }
-        }
-
         [HttpPost("{chatId}/polls")]
-public async Task<IActionResult> CreatePoll(int chatId, [FromBody] PollDto dto)
-{
-    var isParticipant = await _context.ChatParticipants.AnyAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
-    if (!isParticipant) return Forbid();
+        public async Task<IActionResult> CreatePoll(int chatId, [FromBody] PollDto dto)
+        {
+            var participant = await _context.ChatParticipants
+                .Include(cp => cp.User)
+                .FirstOrDefaultAsync(cp => cp.ChatID == chatId && cp.UserID == CurrentUserId);
+            if (participant == null) return Forbid();
 
-    var poll = new Poll
-    {
-        ChatID = chatId,
-        CreatorUserID = CurrentUserId,
-        Question = dto.Question,
-        IsAnonymous = dto.IsAnonymous,
-        IsMultipleChoice = false, 
-        CreatedAt = DateTime.UtcNow
-    };
+            var poll = new Poll
+            {
+                ChatID = chatId,
+                CreatorUserID = CurrentUserId,
+                Question = dto.Question,
+                IsAnonymous = dto.IsAnonymous,
+                IsMultipleChoice = false,
+                CreatedAt = DateTime.UtcNow
+            };
 
-    foreach (var optionText in dto.Options)
-    {
-        poll.Options.Add(new PollOption { OptionText = optionText });
-    }
+            foreach (var optionText in dto.Options)
+            {
+                poll.Options.Add(new PollOption { OptionText = optionText });
+            }
 
-    _context.Polls.Add(poll);
-    await _context.SaveChangesAsync();
+            _context.Polls.Add(poll);
+            await _context.SaveChangesAsync();
 
-    // --- ФИКС НАЧИНАЕТСЯ ЗДЕСЬ ---
-    
-    // 1. Создаем сообщение типа "Poll", чтобы оно попало в историю чата
-    var pollMessage = new Message
-    {
-        ChatID = chatId,
-        SenderUserID = CurrentUserId,
-        ContentText = dto.Question, // Текст сообщения — это сам вопрос
-        SentAt = DateTime.UtcNow,
-        MessageType = "Poll",
-        IsRead = false
-    };
+            // Создаем сообщение типа "Poll" с связью на Poll
+            var pollMessage = new Message
+            {
+                ChatID = chatId,
+                SenderUserID = CurrentUserId,
+                ContentText = dto.Question,
+                SentAt = DateTime.UtcNow,
+                MessageType = "Poll",
+                IsRead = false,
+                PollId = poll.PollID // Сохраняем связь Poll -> Message
+            };
 
-    _context.Messages.Add(pollMessage);
-    await _context.SaveChangesAsync();
+            _context.Messages.Add(pollMessage);
+            await _context.SaveChangesAsync();
 
-    // 2. Уведомляем клиентов в реальном времени, чтобы Максимка сразу увидел опрос
-    await _hubContext.Clients.Group(chatId.ToString()).SendAsync("ReceiveMessage", new {
-        pollMessage.MessageID,
-        pollMessage.SenderUserID,
-        pollMessage.ContentText,
-        pollMessage.SentAt,
-        pollMessage.MessageType,
-        SenderName = (await _context.Users.FindAsync(CurrentUserId))?.DisplayName,
-        PollId = poll.PollID // Обязательно пробрасываем ID опроса, чтобы фронт знал, что грузить
-    });
+            // Уведомляем клиентов в реальном времени
+            await _hubContext.Clients.Group(chatId.ToString()).SendAsync("ReceiveMessage", new {
+                pollMessage.MessageID,
+                pollMessage.SenderUserID,
+                pollMessage.ContentText,
+                pollMessage.SentAt,
+                pollMessage.MessageType,
+                SenderName = participant.User?.DisplayName,
+                PollId = poll.PollID
+            });
 
-    // --- ФИКС ЗАКАНЧИВАЕТСЯ ЗДЕСЬ ---
-
-    return Ok(new { success = true, pollId = poll.PollID });
-}
+            return Ok(new { success = true, pollId = poll.PollID });
+        }
 
         [HttpPut("{chatId}/archive")]
         public async Task<IActionResult> ArchiveChat(int chatId, [FromBody] bool archive)
@@ -703,9 +725,5 @@ public async Task<IActionResult> CreatePoll(int chatId, [FromBody] PollDto dto)
             return Ok(new { summary = summary });
         }
 
-        public class PollDto { public string Question { get; set; } = ""; public List<string> Options { get; set; } = new(); public bool IsAnonymous { get; set; } }
-
-        public class UpdateGroupDto { public string? GroupName { get; set; } public string? AvatarUrl { get; set; } }
-        public class CreateGroupRequest { public string GroupName { get; set; } = string.Empty; public List<int> MemberUserIds { get; set; } = new(); public bool IsChannel { get; set; } = false; }
     }
 }

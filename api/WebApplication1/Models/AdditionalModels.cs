@@ -106,5 +106,7 @@ namespace WebApplication1.Models
         public bool IsVideo { get; set; }
         public DateTime StartedAt { get; set; } = DateTime.UtcNow;
         public DateTime? EndedAt { get; set; }
+        public bool DeletedByCaller { get; set; } = false;
+        public bool DeletedByReceiver { get; set; } = false;
     }
 }

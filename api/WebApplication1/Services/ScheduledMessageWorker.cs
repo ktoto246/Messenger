@@ -56,7 +56,7 @@ namespace WebApplication1.Services
                                         msg.SenderUserID,
                                         msg.ContentText,
                                         msg.SentAt,
-                                        msg.ImageUrl,
+                                        msg.MediaUrl,
                                         msg.MessageType,
                                         msg.ReplyToMessageId,
                                         SenderName = msg.SenderUser?.DisplayName,
@@ -70,35 +70,54 @@ namespace WebApplication1.Services
                     }
  
                     // 2. АВТОУДАЛЕНИЕ СООБЩЕНИЙ (ПО ТАЙМЕРУ ЧАТА)
-                    var expiredByTimer = await context.Messages
-                        .Include(m => m.Chat)
-                        // 👇 ФИКС: Игнорим запланированные сообщения (m.ScheduledAt == null)
-                        .Where(m => !m.IsDeleted && m.ScheduledAt == null && m.Chat.AutoDeleteSeconds != null)
-                        .ToListAsync();
- 
-                    var toDeleteByTimer = expiredByTimer
-                        .Where(m => m.SentAt.AddSeconds(m.Chat.AutoDeleteSeconds!.Value) <= now)
-                        .ToList();
- 
-                    foreach (var msg in toDeleteByTimer) { 
-                        msg.IsDeleted = true; 
-                        if (!string.IsNullOrEmpty(msg.ImageUrl)) _fileService.DeleteFile(msg.ImageUrl);
-                    }
- 
-                    // 3. УДАЛЕНИЕ ОДНОРАЗОВЫХ СООБЩЕНИЙ (УЖЕ ПРОСМОТРЕННЫХ)
-                    var expiredViewOnce = await context.Messages
-                        // 👇 ФИКС: И тут тоже на всякий случай отсекаем запланированные
-                        .Where(m => m.IsViewOnce && m.ViewedAt != null && !m.IsDeleted && m.ScheduledAt == null)
-                        .ToListAsync();
- 
-                    foreach (var msg in expiredViewOnce) { 
-                        msg.IsDeleted = true; 
-                        if (!string.IsNullOrEmpty(msg.ImageUrl)) _fileService.DeleteFile(msg.ImageUrl);
-                    }
- 
-                    if (toDeleteByTimer.Any() || expiredViewOnce.Any())
+                    // Фильтр SentAt + AutoDeleteSeconds <= now вычисляется в SQL через EF
+                    try
                     {
-                        await context.SaveChangesAsync();
+                        var toDeleteByTimer = await context.Messages
+                            .Include(m => m.Chat)
+                            .Where(m => !m.IsDeleted
+                                && m.ScheduledAt == null
+                                && m.Chat.AutoDeleteSeconds != null
+                                && EF.Functions.DateDiffSecond(m.SentAt, now) >= m.Chat.AutoDeleteSeconds)
+                            .ToListAsync();
+
+                        foreach (var msg in toDeleteByTimer)
+                        {
+                            msg.IsDeleted = true;
+                            if (!string.IsNullOrEmpty(msg.MediaUrl))
+                            {
+                                try { _fileService.DeleteFile(msg.MediaUrl); } catch { /* файл уже удалён */ }
+                            }
+                        }
+
+                        if (toDeleteByTimer.Any()) await context.SaveChangesAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"AutoDelete timer error: {ex.Message}");
+                    }
+
+                    // 3. УДАЛЕНИЕ ОДНОРАЗОВЫХ СООБЩЕНИЙ (УЖЕ ПРОСМОТРЕННЫХ)
+                    try
+                    {
+                        var expiredViewOnce = await context.Messages
+                            .Where(m => m.IsViewOnce && m.ViewedAt != null && !m.IsDeleted && m.ScheduledAt == null)
+                            .ToListAsync();
+
+                        foreach (var msg in expiredViewOnce)
+                        {
+                            msg.IsDeleted = true;
+                            if (!string.IsNullOrEmpty(msg.MediaUrl))
+                            {
+                                try { _fileService.DeleteFile(msg.MediaUrl); } catch { /* файл уже удалён */ }
+                            }
+                        }
+
+                        if (expiredViewOnce.Any()) await context.SaveChangesAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"AutoDelete viewOnce error: {ex.Message}");
                     }
                 }
 

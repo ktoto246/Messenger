@@ -27,6 +27,7 @@ namespace WebApplication1.Models
         public bool PrivacyPhone { get; set; } = false;
         public bool PrivacyAvatar { get; set; } = false;
         public bool PrivacyMessages { get; set; } = false;
+        public bool PrivacyOnlineStatus { get; set; } = false;
 
         public bool IsOnline { get; set; } = false;
         public DateTime? LastActive { get; set; }
