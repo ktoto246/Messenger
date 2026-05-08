@@ -9,15 +9,18 @@ namespace WebApplication1.DTOs
         public string Email { get; set; }
 
         [Required]
-        [MinLength(6, ErrorMessage = "Пароль должен быть не менее 6 символов")]
+        [MinLength(8, ErrorMessage = "Пароль должен быть не менее 8 символов")]
         [MaxLength(100)]
+        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$",
+            ErrorMessage = "Пароль должен содержать строчную и заглавную буквы и цифру")]
         public string Password { get; set; }
 
         [Required]
         [MaxLength(100)]
         public string DisplayName { get; set; }
 
+        [Required]
         [MaxLength(50)]
-        public string? Username { get; set; }
+        public string Username { get; set; }
     }
 }

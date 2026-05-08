@@ -23,6 +23,7 @@ namespace WebApplication1.Data
         public DbSet<PollOption> PollOptions { get; set; }
         public DbSet<PollVote> PollVotes { get; set; }
         public DbSet<Call> Calls { get; set; }
+        public DbSet<RevokedToken> RevokedTokens { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
