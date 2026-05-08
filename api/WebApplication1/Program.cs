@@ -11,6 +11,7 @@ using Google.Apis.Auth.OAuth2;
 using WebApplication1.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -143,6 +144,24 @@ app.UseCors("FlutterDevPolicy");
 
 app.UseHttpsRedirection();
 app.UseAuthentication();
+
+// Reject tokens that have been explicitly revoked via POST /auth/logout
+app.Use(async (context, next) =>
+{
+    var jti = context.User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti);
+    if (!string.IsNullOrEmpty(jti))
+    {
+        var db = context.RequestServices.GetRequiredService<AppDbContext>();
+        if (await db.RevokedTokens.AnyAsync(t => t.Jti == jti))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsync("Token has been revoked");
+            return;
+        }
+    }
+    await next();
+});
+
 app.UseRateLimiter();
 app.UseAuthorization();
 app.UseStaticFiles();
@@ -154,8 +173,17 @@ app.MapHub<CallHub>("/callHub");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    // 👈 ФИКС: Теперь применяем нормальные миграции вместо тупого создания
-    db.Database.Migrate(); 
+    db.Database.EnsureCreated();
+    // Create RevokedTokens table if it doesn't exist yet (added after initial schema)
+    db.Database.ExecuteSqlRaw("""
+        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'RevokedTokens')
+        CREATE TABLE RevokedTokens (
+            Id INT IDENTITY(1,1) PRIMARY KEY,
+            Jti NVARCHAR(200) NOT NULL,
+            ExpiresAt DATETIME2 NOT NULL,
+            RevokedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        )
+        """);
 }
 
 app.Run();
