@@ -1,0 +1,71 @@
+# ==========================
+# ОС И СИСТЕМНЫЙ МУСОР
+# ==========================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# ==========================
+# FLUTTER & DART (ФРОНТЕНД)
+# ==========================
+.dart_tool/
+.packages
+build/
+.pub-cache/
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Автосгенерированные нативные файлы (которые тебе сегодня ебали мозг)
+macos/Flutter/GeneratedPluginRegistrant.swift
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugins.cmake
+/android/app/src/debug/AndroidManifest.xml
+/android/app/src/profile/AndroidManifest.xml
+/ios/Flutter/App.framework
+/ios/Flutter/Flutter.framework
+/ios/Flutter/Flutter.podspec
+/ios/Flutter/Generated.xcconfig
+/ios/Flutter/app.flx
+/ios/Flutter/app.zip
+/ios/Flutter/flutter_assets/
+/ios/Flutter/flutter_export_environment.sh
+/ios/Pods/
+
+# ==========================
+# C# & ASP.NET CORE (БЭКЕНД)
+# ==========================
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.dbmdl
+*.jfm
+TestResults/
+# Если у вас лежат секреты в Development конфиге, раскоментируй строку ниже:
+# appsettings.Development.json
+veinpulse-firebase-adminsdk-fbsvc-e986d6a24e.json
+google-services.json
+google-services.json
+**/google-services.json
+*.json
+!appsettings.json
+!appsettings.Development.json
+
+# ==========================
+# БАЗА ДАННЫХ
+# ==========================
+*.mdf
+*.ldf
+*.ndf
+*.sqlite
+*.sqlite3
+AllMyCode.txt
