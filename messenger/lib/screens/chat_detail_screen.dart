@@ -42,6 +42,8 @@ import 'media_editor_screen.dart';
 import 'package:http/http.dart' as http;
 import '../services/auth_service.dart';
 import '../services/secret_chat_service.dart';
+import '../widgets/inline_video_player.dart';
+import '../widgets/spoiler_text.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int chatId;
@@ -124,6 +126,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   bool _isCompactMode = false;
   String? _autoTranslateTarget;
   String? _selectedTag; 
+
+  bool _showScrollToBottom = false;
+  int _unreadCountWhileScrolled = 0;
 
   @override
   void initState() {
