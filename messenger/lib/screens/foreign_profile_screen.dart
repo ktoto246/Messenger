@@ -201,8 +201,6 @@ class _ForeignProfileScreenState extends State<ForeignProfileScreen> {
                     _startChatAndGreet(); 
                   },
                 ),
-<<<<<<< HEAD
-=======
                 _buildActionButton(
                   icon: Icons.lock_outline,
                   label: "Секретный чат", color: Colors.green, btnBgColor: btnBgColor,
@@ -218,7 +216,6 @@ class _ForeignProfileScreenState extends State<ForeignProfileScreen> {
                     }
                   },
                 ),
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                 const SizedBox(width: 25),
                 _buildActionButton(
                   icon: _isMuted ? Icons.notifications_off_outlined : Icons.notifications_none,

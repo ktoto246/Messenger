@@ -2,23 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'privacy_screen.dart';
 import 'theme_settings_screen.dart';
-<<<<<<< HEAD
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-=======
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../main.dart';
 import 'active_sessions_screen.dart';
 import 'business_profile_screen.dart';
-<<<<<<< HEAD
-import 'missed_calls_screen.dart';
-import 'nearby_people_screen.dart';
-=======
 import 'call_history_screen.dart';
 import 'nearby_people_screen.dart';
 import 'data_storage_screen.dart';
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
 class SettingsScreen extends StatefulWidget {
   final int currentUserId;
@@ -45,58 +36,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     NotificationService.getNightModeSchedule().then((s) { if (mounted) setState(() => _nightScheduleEnabled = s['enabled'] as bool); });
   }
 
-<<<<<<< HEAD
-  // Функция умной очистки кэша (оставляем без изменений)
-  void _showClearCacheDialog() async {
-    int fakeCacheSize = 450; 
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.storage, size: 50, color: Colors.blue),
-              const SizedBox(height: 16),
-              const Text("Использование памяти", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text(
-                "Медиафайлы (фото, видео, ГС) занимают около $fakeCacheSize КБ на устройстве.", 
-                textAlign: TextAlign.center, 
-                style: const TextStyle(color: Colors.grey, fontSize: 16)
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red, 
-                    padding: const EdgeInsets.symmetric(vertical: 14), 
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                  ),
-                  onPressed: () async {
-                    await DefaultCacheManager().emptyCache();
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Медиа-кэш успешно очищен! 🧹"), backgroundColor: Colors.green)
-                      );
-                    }
-                  },
-                  child: const Text("Очистить кэш медиа", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
-    );
-  }
-=======
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
   // 🪄 МАГИЯ СМЕНЫ ТЕМЫ 🪄
   void _toggleTheme(bool newValue) async {
@@ -146,14 +85,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: Icons.lock, color: Colors.grey, title: "Конфиденциальность", 
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => PrivacyScreen(currentUserId: widget.currentUserId, userProfile: widget.userProfile))),
             ),
-<<<<<<< HEAD
-            _buildSettingsItem(icon: Icons.data_usage, color: Colors.green, title: "Данные и память", onTap: _showClearCacheDialog),
-=======
             _buildSettingsItem(
               icon: Icons.data_usage, color: Colors.green, title: "Данные и память", 
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DataStorageScreen())),
             ),
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
             _buildSettingsItem(
               icon: Icons.devices, color: Colors.indigo, title: "Активные сессии",
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActiveSessionsScreen())),
@@ -224,11 +159,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _buildSettingsBlock([
             _buildSettingsItem(
               icon: Icons.call, color: Colors.green, title: "История звонков",
-<<<<<<< HEAD
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MissedCallsScreen(currentUserId: widget.currentUserId))),
-=======
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CallHistoryScreen(userId: widget.currentUserId))),
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
             ),
             _buildSettingsItem(
               icon: Icons.location_on, color: Colors.red, title: "Люди рядом",

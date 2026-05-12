@@ -5,12 +5,8 @@ import 'package:intl/intl.dart';
 
 class SearchMessagesScreen extends StatefulWidget {
   final int currentUserId;
-<<<<<<< HEAD
-  const SearchMessagesScreen({super.key, required this.currentUserId});
-=======
   final int? chatId;
   const SearchMessagesScreen({super.key, required this.currentUserId, this.chatId});
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
   @override
   State<SearchMessagesScreen> createState() => _SearchMessagesScreenState();
@@ -27,11 +23,7 @@ class _SearchMessagesScreenState extends State<SearchMessagesScreen> {
     if (query.isEmpty) return;
 
     setState(() => _isLoading = true);
-<<<<<<< HEAD
-    final results = await _chatService.searchMessages(query);
-=======
     final results = await _chatService.searchMessages(query, chatId: widget.chatId);
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
     if (mounted) {
       setState(() {
         _results = results;

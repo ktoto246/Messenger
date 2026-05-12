@@ -20,8 +20,6 @@ class _MediaEditorScreenState extends State<MediaEditorScreen> {
   DrawnLine? currentLine;
   Color selectedColor = Colors.red;
   double strokeWidth = 5.0;
-<<<<<<< HEAD
-=======
   bool isViewOnce = false;
   bool isBlurMode = false;
   final TextEditingController _captionController = TextEditingController();
@@ -31,7 +29,6 @@ class _MediaEditorScreenState extends State<MediaEditorScreen> {
     _captionController.dispose();
     super.dispose();
   }
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
   Future<void> _saveAndReturn() async {
     try {
@@ -44,15 +41,9 @@ class _MediaEditorScreenState extends State<MediaEditorScreen> {
       final file = await File('${tempDir.path}/edited_image_${DateTime.now().millisecondsSinceEpoch}.png').create();
       await file.writeAsBytes(pngBytes);
 
-<<<<<<< HEAD
-      if (mounted) Navigator.pop(context, file);
-    } catch (e) {
-      if (mounted) Navigator.pop(context, widget.imageFile); // Fallback to original
-=======
       if (mounted) Navigator.pop(context, {'file': file, 'isViewOnce': isViewOnce, 'caption': _captionController.text});
     } catch (e) {
       if (mounted) Navigator.pop(context, {'file': widget.imageFile, 'isViewOnce': isViewOnce, 'caption': _captionController.text}); // Fallback to original
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
     }
   }
 
@@ -60,11 +51,7 @@ class _MediaEditorScreenState extends State<MediaEditorScreen> {
     RenderBox box = context.findRenderObject() as RenderBox;
     Offset point = box.globalToLocal(details.globalPosition);
     setState(() {
-<<<<<<< HEAD
-      currentLine = DrawnLine([point], selectedColor, strokeWidth);
-=======
       currentLine = DrawnLine([point], selectedColor, strokeWidth, isBlur: isBlurMode);
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
     });
   }
 
@@ -94,13 +81,10 @@ class _MediaEditorScreenState extends State<MediaEditorScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
-<<<<<<< HEAD
-=======
             icon: Icon(Icons.blur_on, color: isBlurMode ? Colors.blue : Colors.white),
             onPressed: () => setState(() => isBlurMode = !isBlurMode),
           ),
           IconButton(
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
             icon: const Icon(Icons.undo),
             onPressed: () {
               setState(() {
@@ -140,25 +124,6 @@ class _MediaEditorScreenState extends State<MediaEditorScreen> {
             bottom: 20,
             left: 20,
             right: 20,
-<<<<<<< HEAD
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _colorWidget(Colors.red),
-                  _colorWidget(Colors.blue),
-                  _colorWidget(Colors.green),
-                  _colorWidget(Colors.yellow),
-                  _colorWidget(Colors.white),
-                  _colorWidget(Colors.black),
-                ],
-              ),
-=======
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -216,7 +181,6 @@ class _MediaEditorScreenState extends State<MediaEditorScreen> {
                   ),
                 ),
               ],
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
             ),
           )
         ],
@@ -245,12 +209,8 @@ class DrawnLine {
   final List<Offset> path;
   final Color color;
   final double width;
-<<<<<<< HEAD
-  DrawnLine(this.path, this.color, this.width);
-=======
   final bool isBlur;
   DrawnLine(this.path, this.color, this.width, {this.isBlur = false});
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 }
 
 class DrawingPainter extends CustomPainter {
@@ -272,22 +232,15 @@ class DrawingPainter extends CustomPainter {
   void _drawLine(Canvas canvas, DrawnLine line) {
     if (line.path.isEmpty) return;
     final paint = Paint()
-<<<<<<< HEAD
-      ..color = line.color
-=======
       ..color = line.isBlur ? Colors.white.withValues(alpha: 0.1) : line.color
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
       ..strokeWidth = line.width
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-<<<<<<< HEAD
-=======
     if (line.isBlur) {
       paint.imageFilter = ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10);
     }
 
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
     final path = Path();
     path.moveTo(line.path.first.dx, line.path.first.dy);
     for (int i = 1; i < line.path.length; i++) {

@@ -1,26 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-<<<<<<< HEAD
-import '../services/notification_service.dart';
-=======
 import 'dart:ui';
 import '../services/notification_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
 /// Экран выбора обоев для чата
 class ChatWallpaperScreen extends StatefulWidget {
   final int chatId;
   final String chatName;
-<<<<<<< HEAD
-
-  const ChatWallpaperScreen({super.key, required this.chatId, required this.chatName});
-=======
   final String? partnerAvatarUrl;
 
   const ChatWallpaperScreen({super.key, required this.chatId, required this.chatName, this.partnerAvatarUrl});
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
   @override
   State<ChatWallpaperScreen> createState() => _ChatWallpaperScreenState();
@@ -29,11 +20,8 @@ class ChatWallpaperScreen extends StatefulWidget {
 class _ChatWallpaperScreenState extends State<ChatWallpaperScreen> {
   String? _currentWallpaper;
   bool _isLoading = false;
-<<<<<<< HEAD
-=======
   double _blur = 0;
   double _dim = 0.3;
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
   // Встроенные градиентные темы
   final List<Map<String, dynamic>> _presets = [
@@ -55,8 +43,6 @@ class _ChatWallpaperScreenState extends State<ChatWallpaperScreen> {
     NotificationService.getChatWallpaper(widget.chatId).then((w) {
       if (mounted) setState(() => _currentWallpaper = w);
     });
-<<<<<<< HEAD
-=======
     NotificationService.getChatWallpaperSettings(widget.chatId).then((s) {
       if (mounted) setState(() { _blur = s['blur']!; _dim = s['dim']!; });
     });
@@ -64,7 +50,6 @@ class _ChatWallpaperScreenState extends State<ChatWallpaperScreen> {
 
   Future<void> _saveSettings() async {
     await NotificationService.setChatWallpaperSettings(widget.chatId, blur: _blur, dim: _dim);
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   }
 
   Future<void> _pickFromGallery() async {
@@ -87,8 +72,6 @@ class _ChatWallpaperScreenState extends State<ChatWallpaperScreen> {
     }
   }
 
-<<<<<<< HEAD
-=======
   Future<void> _setPartnerAvatar() async {
     if (widget.partnerAvatarUrl == null) return;
     await NotificationService.setChatWallpaper(widget.chatId, 'url:${widget.partnerAvatarUrl}');
@@ -96,7 +79,6 @@ class _ChatWallpaperScreenState extends State<ChatWallpaperScreen> {
     await _saveSettings();
   }
 
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
@@ -119,9 +101,6 @@ class _ChatWallpaperScreenState extends State<ChatWallpaperScreen> {
                       ? Container(color: isDark ? const Color(0xFF0D1117) : const Color(0xFFEFEFEF))
                       : _currentWallpaper!.startsWith('preset:')
                           ? _buildPresetBackground(_currentWallpaper!.replaceFirst('preset:', ''))
-<<<<<<< HEAD
-                          : Image.file(File(_currentWallpaper!), fit: BoxFit.cover),
-=======
                           : _currentWallpaper!.startsWith('url:')
                               ? CachedNetworkImage(imageUrl: _currentWallpaper!.replaceFirst('url:', ''), fit: BoxFit.cover)
                               : Image.file(File(_currentWallpaper!), fit: BoxFit.cover),
@@ -132,7 +111,6 @@ class _ChatWallpaperScreenState extends State<ChatWallpaperScreen> {
                     filter: ImageFilter.blur(sigmaX: _blur, sigmaY: _blur),
                     child: Container(color: Colors.black.withValues(alpha: _dim)),
                   ),
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                 ),
                 // Примерные сообщения-превью
                 Positioned(
@@ -151,25 +129,6 @@ class _ChatWallpaperScreenState extends State<ChatWallpaperScreen> {
             ),
           ),
 
-<<<<<<< HEAD
-          // Выбор из галереи
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.photo_library),
-                label: const Text('Выбрать из галереи'),
-                onPressed: _pickFromGallery,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-          ),
-
-=======
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -223,7 +182,6 @@ class _ChatWallpaperScreenState extends State<ChatWallpaperScreen> {
               ),
             ),
 
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
           // Пресеты
           Expanded(
             flex: 2,

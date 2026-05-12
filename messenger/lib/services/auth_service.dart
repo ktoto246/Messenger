@@ -185,8 +185,6 @@ class AuthService {
       debugPrint("Ошибка обновления статуса: $e");
     }
   }
-<<<<<<< HEAD
-=======
 
   Future<List<dynamic>> getSessions() async {
     try {
@@ -230,5 +228,4 @@ class AuthService {
       return response.statusCode == 200;
     } catch (e) { return false; }
   }
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 }

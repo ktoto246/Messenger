@@ -141,8 +141,6 @@ class NotificationService {
     return box.get('wallpaper_$chatId') as String?;
   }
 
-<<<<<<< HEAD
-=======
   static Future<void> setChatWallpaperSettings(int chatId, {double blur = 0, double dim = 0.3}) async {
     final box = await _getBox();
     await box.put('wallpaper_blur_$chatId', blur);
@@ -157,7 +155,6 @@ class NotificationService {
     };
   }
 
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   // ══════════════════════════════════════════════
   // ТЕГИ В ИЗБРАННОМ
   // ══════════════════════════════════════════════
@@ -183,8 +180,6 @@ class NotificationService {
     }
     return tags.toList()..sort();
   }
-<<<<<<< HEAD
-=======
 
   // ══════════════════════════════════════════════
   // АВТОПЕРЕВОД ЧАТА
@@ -203,5 +198,4 @@ class NotificationService {
     final box = await _getBox();
     return box.get('autotrans_$chatId') as String?;
   }
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 }

@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import '../services/chat_service.dart';
-<<<<<<< HEAD
-=======
 import 'active_sessions_screen.dart';
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
 class PrivacyScreen extends StatefulWidget {
   final int currentUserId;
@@ -23,10 +20,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
   late int _privacyPhone;
   late int _privacyAvatar;
   late int _privacyMessages;
-<<<<<<< HEAD
-=======
   late int _privacyLastSeen;
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
   @override
   void initState() {
@@ -35,10 +29,7 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
     _privacyPhone = widget.userProfile['privacyPhone'] ?? widget.userProfile['PrivacyPhone'] ?? 0;
     _privacyAvatar = widget.userProfile['privacyAvatar'] ?? widget.userProfile['PrivacyAvatar'] ?? 0;
     _privacyMessages = widget.userProfile['privacyMessages'] ?? widget.userProfile['PrivacyMessages'] ?? 0;
-<<<<<<< HEAD
-=======
     _privacyLastSeen = widget.userProfile['privacyLastSeen'] ?? widget.userProfile['PrivacyLastSeen'] ?? 0;
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   }
 
   // Общая функция сохранения настройки
@@ -110,8 +101,6 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
           ], blockColor),
           _buildGroupFooter("выберите, кто может отправлять вам сообщения. Остальные увидят иконку замочка 🔒.", headerTextColor),
           
-<<<<<<< HEAD
-=======
           const SizedBox(height: 25),
 
           // --- ВРЕМЯ ПОСЛЕДНЕГО ВХОДА ---
@@ -151,15 +140,12 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
           ], blockColor),
           _buildGroupFooter("Вы можете установить период, после которого ваш аккаунт будет удален автоматически при неактивности.", headerTextColor),
 
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
           const SizedBox(height: 40),
         ],
       ),
     );
   }
 
-<<<<<<< HEAD
-=======
   void _showSelfDestructPicker(Color textColor, Color blockColor) {
     showModalBottomSheet(
       context: context,
@@ -202,7 +188,6 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
     );
   }
 
->>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   // Заголовок группы (маленькие серые буквы)
   Widget _buildGroupHeader(String text, Color color) {
     return Padding(padding: const EdgeInsets.only(left: 28, bottom: 8), child: Text(text, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w400)));
