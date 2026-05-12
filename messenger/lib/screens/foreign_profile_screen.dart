@@ -201,6 +201,24 @@ class _ForeignProfileScreenState extends State<ForeignProfileScreen> {
                     _startChatAndGreet(); 
                   },
                 ),
+<<<<<<< HEAD
+=======
+                _buildActionButton(
+                  icon: Icons.lock_outline,
+                  label: "Секретный чат", color: Colors.green, btnBgColor: btnBgColor,
+                  onTap: () async {
+                    final currentUserId = await _authService.getCurrentUserId();
+                    if (currentUserId != null && mounted) {
+                      final chatId = await _chatService.createPrivateChat(currentUserId, widget.userId);
+                      if (chatId != null && mounted && context.mounted) {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(
+                          chatId: chatId, currentUserId: currentUserId, chatName: userProfile?['displayName'] ?? widget.initialName ?? 'Chat', otherUserId: widget.userId, isSecret: true,
+                        )));
+                      }
+                    }
+                  },
+                ),
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                 const SizedBox(width: 25),
                 _buildActionButton(
                   icon: _isMuted ? Icons.notifications_off_outlined : Icons.notifications_none,

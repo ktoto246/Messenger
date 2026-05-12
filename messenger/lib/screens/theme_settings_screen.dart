@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+<<<<<<< HEAD
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/app_config.dart';
 import '../services/auth_service.dart';
+=======
+import '../services/theme_service.dart';
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
 class ThemeSettingsScreen extends StatefulWidget {
   final int currentUserId;
@@ -14,6 +18,10 @@ class ThemeSettingsScreen extends StatefulWidget {
 }
 
 class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
+<<<<<<< HEAD
+=======
+  final ThemeService _themeService = ThemeService.instance;
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   
   String _primaryColorHex = "#007AFF";
   double _bubbleOpacity = 0.8;
@@ -38,6 +46,7 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
   }
 
   Future<void> _loadTheme() async {
+<<<<<<< HEAD
     try {
       final token = await AuthService.getToken();
       final response = await http.get(
@@ -55,11 +64,24 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
         });
       }
     } catch (e) {
+=======
+    final data = await _themeService.getTheme();
+    if (data != null) {
+      setState(() {
+        _primaryColorHex = data['primaryColor'] ?? "#007AFF";
+        _bubbleOpacity = (data['bubbleOpacity'] ?? 0.8).toDouble();
+        _isGlassmorphism = data['isGlassmorphism'] ?? true;
+        _bgImageUrl = data['bgImageUrl'];
+        _isLoading = false;
+      });
+    } else {
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _saveTheme() async {
+<<<<<<< HEAD
     try {
       final token = await AuthService.getToken();
       await http.post(
@@ -79,6 +101,15 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
     } catch (e) {
        debugPrint("Error saving theme: $e");
     }
+=======
+    await _themeService.updateTheme({
+      'primaryColor': _primaryColorHex,
+      'bgImageUrl': _bgImageUrl,
+      'bubbleOpacity': _bubbleOpacity,
+      'isGlassmorphism': _isGlassmorphism,
+    });
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Тема сохранена в облаке ☁️")));
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   }
 
   Color _parseHex(String hex) {

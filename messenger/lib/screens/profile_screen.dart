@@ -11,6 +11,10 @@ import 'package:marquee/marquee.dart';
 import '../config/app_config.dart';
 import '../services/story_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+<<<<<<< HEAD
+=======
+import 'business_profile_screen.dart';
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -126,6 +130,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+<<<<<<< HEAD
+=======
+  Future<void> _editBio() async {
+    final controller = TextEditingController(text: userProfile?['bio'] ?? '');
+    final newBio = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("О себе"),
+        content: TextField(controller: controller, maxLength: 70, decoration: const InputDecoration(hintText: "Расскажите о себе...")),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Отмена")),
+          TextButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text("Сохранить")),
+        ],
+      ),
+    );
+
+    if (newBio != null && mounted) {
+      int? userId = userProfile?['userID'] ?? userProfile?['userId'];
+      if (userId != null) {
+        await _chatService.updateProfile(userId, {'Bio': newBio});
+        _loadProfile();
+      }
+    }
+  }
+
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   Widget _buildMusicPlayer() {
     bool hasMusic = _musicUrl != null && _musicUrl!.isNotEmpty;
     String trackName = "Добавить трек";
@@ -327,6 +357,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
 
             _buildListTile(
+<<<<<<< HEAD
+=======
+              icon: Icons.info_outline, iconBgColor: Colors.amber, 
+              title: "О себе", trailingText: userProfile?['bio'] ?? "Добавить био", showArrow: true, textColor: textColor, isDark: isDark,
+              onTap: _editBio
+            ),
+
+            _buildDivider(isDark),
+
+            _buildListTile(
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
               icon: Icons.phone, iconBgColor: const Color(0xFF007AFF), 
               title: "Phone", trailingText: phone, showArrow: true, textColor: textColor, isDark: isDark
             ),
@@ -337,9 +378,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               icon: Icons.settings, iconColor: Colors.white, iconBgColor: Colors.grey[700]!, 
               title: "Настройки", showArrow: true, textColor: textColor, isDark: isDark,
               onTap: () async { 
+<<<<<<< HEAD
                 if (userProfile != null) {
                   await Navigator.push(context, MaterialPageRoute(
                     builder: (context) => SettingsScreen(currentUserId: userProfile!['userID'], userProfile: userProfile!),
+=======
+                final profile = userProfile;
+                if (profile != null) {
+                  await Navigator.push(context, MaterialPageRoute(
+                    builder: (context) => SettingsScreen(currentUserId: profile['userID'], userProfile: profile),
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                   ));
                   _loadProfile(); 
                 }
@@ -347,6 +395,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
 
             _buildDivider(isDark),
+<<<<<<< HEAD
+=======
+
+            _buildListTile(
+              icon: Icons.business, iconBgColor: Colors.teal, 
+              title: "Business Tools", showArrow: true, textColor: textColor, isDark: isDark,
+              onTap: () {
+                final profile = userProfile;
+                if (profile != null) {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (context) => BusinessProfileScreen(currentUserId: profile['userID']),
+                  ));
+                }
+              },
+            ),
+
+            _buildDivider(isDark),
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
           ],
         ),
       )
@@ -384,10 +450,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Text(title, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400, color: textColor)), // Адаптивный цвет
             const Spacer(),
             if (trailingText != null)
+<<<<<<< HEAD
               Text(trailingText, style: TextStyle(fontSize: 17, color: textColor.withValues(alpha: 0.4))), // Адаптивный цвет
             if (showArrow)
                Padding(padding: const EdgeInsets.only(left: 8.0), child: Icon(Icons.chevron_right, color: textColor.withValues(alpha: 0.3))),
             ?trailing,
+=======
+              Text(trailingText, style: TextStyle(fontSize: 17, color: Color.alphaBlend(textColor.withValues(alpha: 0.4), Colors.transparent))),
+            if (showArrow)
+               Padding(padding: const EdgeInsets.only(left: 8.0), child: Icon(Icons.chevron_right, color: Color.alphaBlend(textColor.withValues(alpha: 0.3), Colors.transparent))),
+            trailing ?? const SizedBox.shrink(),
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
           ],
         ),
       ),

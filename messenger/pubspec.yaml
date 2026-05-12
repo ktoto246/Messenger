@@ -47,6 +47,10 @@ dependencies:
   any_link_preview: ^3.0.0
   encrypt: ^5.0.3
   cryptography: ^2.7.0
+<<<<<<< HEAD
+=======
+  lottie: ^3.1.0
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
 dev_dependencies:
   flutter_test:

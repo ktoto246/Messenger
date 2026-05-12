@@ -3,6 +3,10 @@ import 'dart:async';
 import '../services/chat_service.dart';
 import 'chat_detail_screen.dart';
 import 'create_group_screen.dart'; 
+<<<<<<< HEAD
+=======
+import 'nearby_people_screen.dart';
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 import 'package:hive_flutter/hive_flutter.dart';
 
 class NewMessageScreen extends StatefulWidget {
@@ -113,6 +117,16 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
           ),
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+<<<<<<< HEAD
+=======
+            leading: CircleAvatar(backgroundColor: isDark ? Colors.grey[800] : const Color(0xFFF2F2F2), radius: 20, child: const Icon(Icons.location_on, color: Colors.blue)),
+            title: Text('Find People Nearby', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: textColor)),
+            trailing: Icon(Icons.chevron_right, color: isDark ? Colors.white54 : Colors.grey),
+            onTap: () { Navigator.push(context, MaterialPageRoute(builder: (context) => NearbyPeopleScreen(currentUserId: widget.currentUserId))); },
+          ),
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
             leading: CircleAvatar(backgroundColor: isDark ? Colors.grey[800] : const Color(0xFFF2F2F2), radius: 20, child: Icon(Icons.people, color: textColor)),
             title: Text('Create a New Group', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: textColor)),
             trailing: Icon(Icons.chevron_right, color: isDark ? Colors.white54 : Colors.grey),

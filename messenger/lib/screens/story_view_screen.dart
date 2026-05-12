@@ -412,11 +412,17 @@ class _StoryViewScreenState extends State<StoryViewScreen>
 
   Widget _buildMedia(String url) {
     if (_isVideoStory && _videoController != null && _videoController!.value.isInitialized) {
+<<<<<<< HEAD
       return FittedBox(
         fit: BoxFit.cover,
         child: SizedBox(
           width: _videoController!.value.size.width,
           height: _videoController!.value.size.height,
+=======
+      return Center(
+        child: AspectRatio(
+          aspectRatio: _videoController!.value.aspectRatio,
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
           child: VideoPlayer(_videoController!),
         ),
       );

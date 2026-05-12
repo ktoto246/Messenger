@@ -8,6 +8,10 @@ import '../config/app_config.dart';
 
 class ChatService {
   static const String baseUrl = AppConfig.baseUrl;
+<<<<<<< HEAD
+=======
+  bool _isSyncing = false; // 🔒 Предотвращение Race Condition при синхронизации
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
   Future<Map<String, String>> _getHeaders() async {
     final token = await AuthService.getToken();
@@ -49,8 +53,16 @@ class ChatService {
           ? '$baseUrl/chats/$chatId/messages?lastMessageId=$lastMessageId&take=$take'
           : '$baseUrl/chats/$chatId/messages?take=$take';
 
+<<<<<<< HEAD
       final response = await http.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 3));
       if (response.statusCode == 200) {
+=======
+      final response = await http.get(Uri.parse(url), headers: headers).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is! List) return []; // 🛡️ Защита от некорректного формата
+        
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
         if (lastMessageId == null) {
           await box.put(cacheKey, response.body); 
         } else {
@@ -164,6 +176,7 @@ class ChatService {
 
   // СИНХРОНИЗАЦИЯ ОФЛАЙН СООБЩЕНИЙ
   Future<void> syncPendingMessages() async {
+<<<<<<< HEAD
     final box = await Hive.openBox('pending_messages');
     if (box.isEmpty) return;
 
@@ -194,6 +207,43 @@ class ChatService {
       } catch (e) {
         break; // Если всё еще нет сети, прерываем цикл
       }
+=======
+    if (_isSyncing) return;
+    _isSyncing = true;
+    try {
+      final box = await Hive.openBox('pending_messages');
+      if (box.isEmpty) return;
+
+      final List<dynamic> keys = box.keys.toList();
+      for (var key in keys) {
+        final msg = box.get(key);
+        try {
+          final headers = await _getHeaders();
+          final response = await http.post(
+            Uri.parse('$baseUrl/chats/${msg['chatId']}/messages'),
+            headers: headers,
+            body: jsonEncode(msg['data']),
+          ).timeout(const Duration(seconds: 5));
+
+          if (response.statusCode == 200) {
+            final msgBox = Hive.box('messages_box');
+            final cacheKey = 'msgs_${msg['chatId']}_0';
+            final existingJson = msgBox.get(cacheKey);
+            if (existingJson != null) {
+              final List<dynamic> msgs = jsonDecode(existingJson);
+              msgs.removeWhere((m) => m['isPending'] == true && m['chatID'] == msg['chatId']);
+              await msgBox.put(cacheKey, jsonEncode(msgs));
+            }
+            await box.delete(key);
+            debugPrint("Офлайн сообщение успешно отправлено! ✅");
+          }
+        } catch (e) {
+          break; // Ошибка сети — прерываем до следующего раза
+        }
+      }
+    } finally {
+      _isSyncing = false;
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
     }
   }
 
@@ -379,12 +429,24 @@ class ChatService {
     } catch (e) { debugPrint("Ошибка реакции: $e"); }
   }
 
+<<<<<<< HEAD
   // 19. ГЛОБАЛЬНЫЙ ПОИСК СООБЩЕНИЙ
   Future<List<dynamic>> searchMessages(String query) async {
     try {
       final headers = await _getHeaders();
       // Используем Uri для корректного кодирования спецсимволов в query
       final uri = Uri.parse('$baseUrl/messages/search').replace(queryParameters: {'query': query});
+=======
+  // 19. ГЛОБАЛЬНЫЙ ИЛИ ЛОКАЛЬНЫЙ ПОИСК СООБЩЕНИЙ
+  Future<List<dynamic>> searchMessages(String query, {int? chatId}) async {
+    try {
+      final headers = await _getHeaders();
+      // Используем Uri для корректного кодирования спецсимволов в query
+      final queryParams = {'query': query};
+      if (chatId != null) queryParams['chatId'] = chatId.toString();
+      
+      final uri = Uri.parse('$baseUrl/messages/search').replace(queryParameters: queryParams);
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
       final response = await http.get(uri, headers: headers);
       if (response.statusCode == 200) return jsonDecode(response.body);
     } catch (e) { debugPrint("Ошибка поиска: $e"); }
@@ -467,7 +529,11 @@ class ChatService {
       var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/chats/uploadMedia'));
       if (token != null) request.headers['Authorization'] = 'Bearer $token';
       request.files.add(await http.MultipartFile.fromPath('file', file.path));
+<<<<<<< HEAD
       var response = await request.send();
+=======
+      var response = await request.send().timeout(const Duration(seconds: 30)); // ⏳ Таймаут на загрузку файла
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
       if (response.statusCode == 200) {
         var data = jsonDecode(await response.stream.bytesToString());
         return data['mediaUrl'];
@@ -525,4 +591,42 @@ class ChatService {
       await http.delete(Uri.parse('$baseUrl/calls/history/$userId'), headers: headers);
     } catch (e) { debugPrint('clearCallHistory error: $e'); }
   }
+<<<<<<< HEAD
+=======
+
+  // 29. БИЗНЕС-ПРОФИЛЬ
+  Future<Map<String, dynamic>?> getBusinessProfile(int userId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('$baseUrl/users/$userId/business'), headers: headers);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) { debugPrint('getBusinessProfile error: $e'); }
+    return null;
+  }
+
+  Future<bool> updateBusinessProfile(int userId, Map<String, dynamic> data) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.put(Uri.parse('$baseUrl/users/$userId/business'), headers: headers, body: jsonEncode(data));
+      return response.statusCode == 200;
+    } catch (e) { return false; }
+  }
+
+  // 30. ОТЛОЖЕННЫЕ СООБЩЕНИЯ
+  Future<List<dynamic>> getScheduledMessages(int chatId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('$baseUrl/chats/$chatId/scheduled'), headers: headers);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) { debugPrint('getScheduledMessages error: $e'); }
+    return [];
+  }
+
+  Future<void> deleteScheduledMessage(int messageId) async {
+    try {
+      final headers = await _getHeaders();
+      await http.delete(Uri.parse('$baseUrl/messages/scheduled/$messageId'), headers: headers);
+    } catch (e) { debugPrint('deleteScheduledMessage error: $e'); }
+  }
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 }

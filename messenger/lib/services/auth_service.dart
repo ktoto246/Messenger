@@ -185,4 +185,50 @@ class AuthService {
       debugPrint("Ошибка обновления статуса: $e");
     }
   }
+<<<<<<< HEAD
+=======
+
+  Future<List<dynamic>> getSessions() async {
+    try {
+      final token = await getToken();
+      final response = await http.get(
+        Uri.parse('$baseUrl/sessions'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 6));
+      if (response.statusCode == 200) return jsonDecode(response.body);
+    } catch (e) { debugPrint('Sessions error: $e'); }
+    return [];
+  }
+
+  Future<bool> terminateSession(String sessionId) async {
+    try {
+      final token = await getToken();
+      final response = await http.delete(
+        Uri.parse('$baseUrl/sessions/$sessionId'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+      return response.statusCode == 200;
+    } catch (e) { return false; }
+  }
+
+  Future<bool> terminateAllOtherSessions() async {
+    try {
+      final token = await getToken();
+      final response = await http.delete(
+        Uri.parse('$baseUrl/sessions/all'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+      return response.statusCode == 200;
+    } catch (e) { return false; }
+  }
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 }

@@ -5,6 +5,12 @@ import '../config/app_config.dart';
 import 'auth_service.dart';
 
 class ThemeService {
+<<<<<<< HEAD
+=======
+  static final ThemeService instance = ThemeService._internal();
+  ThemeService._internal();
+
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   static const String baseUrl = '${AppConfig.baseUrl}/themes';
 
   Future<Map<String, String>> _getHeaders() async {

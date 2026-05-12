@@ -141,6 +141,23 @@ class NotificationService {
     return box.get('wallpaper_$chatId') as String?;
   }
 
+<<<<<<< HEAD
+=======
+  static Future<void> setChatWallpaperSettings(int chatId, {double blur = 0, double dim = 0.3}) async {
+    final box = await _getBox();
+    await box.put('wallpaper_blur_$chatId', blur);
+    await box.put('wallpaper_dim_$chatId', dim);
+  }
+
+  static Future<Map<String, double>> getChatWallpaperSettings(int chatId) async {
+    final box = await _getBox();
+    return {
+      'blur': box.get('wallpaper_blur_$chatId', defaultValue: 0.0) as double,
+      'dim': box.get('wallpaper_dim_$chatId', defaultValue: 0.3) as double,
+    };
+  }
+
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   // ══════════════════════════════════════════════
   // ТЕГИ В ИЗБРАННОМ
   // ══════════════════════════════════════════════
@@ -166,4 +183,25 @@ class NotificationService {
     }
     return tags.toList()..sort();
   }
+<<<<<<< HEAD
+=======
+
+  // ══════════════════════════════════════════════
+  // АВТОПЕРЕВОД ЧАТА
+  // ══════════════════════════════════════════════
+
+  static Future<void> setChatAutoTranslate(int chatId, String? targetLang) async {
+    final box = await _getBox();
+    if (targetLang == null) {
+      await box.delete('autotrans_$chatId');
+    } else {
+      await box.put('autotrans_$chatId', targetLang);
+    }
+  }
+
+  static Future<String?> getChatAutoTranslate(int chatId) async {
+    final box = await _getBox();
+    return box.get('autotrans_$chatId') as String?;
+  }
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 }

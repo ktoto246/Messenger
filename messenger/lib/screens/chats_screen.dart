@@ -5,6 +5,11 @@ import '../services/auth_service.dart';
 import 'chat_detail_screen.dart';
 import 'new_message_screen.dart';
 import 'create_folder_screen.dart';
+<<<<<<< HEAD
+=======
+import 'call_history_screen.dart';
+import 'contacts_screen.dart';
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 import 'settings_screen.dart'; 
 import 'search_messages_screen.dart'; 
 import 'profile_screen.dart';
@@ -19,6 +24,10 @@ import '../config/app_config.dart';
 import '../services/folder_service.dart';
 import '../widgets/story_bar.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+<<<<<<< HEAD
+=======
+import 'create_group_screen.dart';
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 import '../services/notification_service.dart';
 
 class ChatsScreen extends StatefulWidget {
@@ -41,6 +50,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
   
   List<dynamic> _allChats = [];
   List<dynamic> _filteredChats = [];
+<<<<<<< HEAD
+=======
+  Map<int, String> _drafts = {};
+  int _archivedCount = 0;
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   List<dynamic> _folders = [];
   int? _selectedFolderId;
   bool _isLoading = true;
@@ -52,6 +66,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
   HubConnection? _hubConnection;
   final Map<int, Timer> _typingChats = {}; 
   StreamSubscription? _networkSubscription; 
+<<<<<<< HEAD
+=======
+  bool _isCompactMode = false;
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
 
 
   @override
@@ -138,6 +156,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
   }
 
   Future<void> _loadData() async {
+<<<<<<< HEAD
+=======
+    _isCompactMode = await NotificationService.isCompactMode();
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
     final userId = await _authService.getCurrentUserId();
 
     if (userId != null) {
@@ -162,6 +184,47 @@ class _ChatsScreenState extends State<ChatsScreen> {
     }
   }
 
+<<<<<<< HEAD
+=======
+  void _showMuteOptions(int chatId) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          const Text("Уведомления", style: TextStyle(fontWeight: FontWeight.bold)),
+          const Divider(),
+          ListTile(title: const Text("Выключить на 1 час"), onTap: () => _mute(chatId, const Duration(hours: 1))),
+          ListTile(title: const Text("Выключить на 8 часов"), onTap: () => _mute(chatId, const Duration(hours: 8))),
+          ListTile(title: const Text("Выключить на 2 дня"), onTap: () => _mute(chatId, const Duration(days: 2))),
+          ListTile(title: const Text("Выключить навсегда"), onTap: () => _mute(chatId, null)),
+          ListTile(title: const Text("Включить"), textColor: Colors.blue, onTap: () => _unmute(chatId)),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  void _mute(int chatId, Duration? d) async {
+    await NotificationService.muteChat(chatId, d);
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Звук уведомлений отключен 🔇")));
+      _refreshChats();
+    }
+  }
+
+  void _unmute(int chatId) async {
+    await NotificationService.unmuteChat(chatId);
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Звук уведомлений включен 🔔")));
+      _refreshChats();
+    }
+  }
+
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
   Future<void> _refreshChats({bool showIndicator = false}) async {
     if (currentUserId == null) return;
     
@@ -177,12 +240,30 @@ class _ChatsScreenState extends State<ChatsScreen> {
       final chats = await _chatService.fetchChats(currentUserId!);
       final folders = await _folderService.getFolders();
       
+<<<<<<< HEAD
+=======
+      // Загружаем черновики для всех чатов
+      final draftsMap = <int, String>{};
+      for (var chat in chats) {
+        final id = chat['chatID'] ?? chat['chatId'] ?? chat['ChatID'];
+        final draft = await _chatService.getMessageDraft(id);
+        if (draft != null && draft.isNotEmpty) {
+          draftsMap[id] = draft;
+        }
+      }
+      
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
       final accounts = await _authService.getAccounts();
       
       if (mounted) {
         setState(() {
           currentUserProfile = profile;
           _allChats = chats;
+<<<<<<< HEAD
+=======
+          _drafts = draftsMap;
+          _archivedCount = chats.where((c) => c['isArchived'] == true || c['IsArchived'] == true).length;
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
           _folders = folders;
           _otherAccounts = accounts.where((a) => (a['userId'] ?? a['UserId']) != currentUserId).toList();
           _onSearchChanged(); 
@@ -220,8 +301,25 @@ class _ChatsScreenState extends State<ChatsScreen> {
             accessTokenFactory: () async => token ?? '',
           ),
         )
+<<<<<<< HEAD
         .build();
     
+=======
+        .withAutomaticReconnect() // 🔄 Авто-переподключение
+        .build();
+    
+    _hubConnection?.onreconnecting(({error}) {
+      if (mounted) setState(() => _isOffline = true);
+    });
+
+    _hubConnection?.onreconnected(({connectionId}) {
+      if (mounted) {
+        setState(() => _isOffline = false);
+        _refreshChats();
+      }
+    });
+
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
     _hubConnection?.onclose(({error}) {
       if (mounted) setState(() => _isOffline = true);
     });
@@ -288,6 +386,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
 
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+<<<<<<< HEAD
+=======
+    bool compactMode = _isCompactMode;
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
     Color bgColor = Theme.of(context).scaffoldBackgroundColor;
     Color textColor = isDark ? Colors.white : Colors.black;
     Color searchBgColor = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F2);
@@ -337,19 +439,47 @@ class _ChatsScreenState extends State<ChatsScreen> {
               onTap: () async {
                 Navigator.pop(context);
                 int? savedChatId = await _chatService.getOrCreateSavedMessages(currentUserId!);
+<<<<<<< HEAD
                 if (savedChatId != null && mounted) {
                   if (context.mounted) {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId, isSecret: false)));
                   }
+=======
+                if (savedChatId != null && mounted && context.mounted) {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId, isSecret: false, partnerAvatarUrl: myAvatarUrl)));
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                 }
               },
             ),
             ListTile(
+<<<<<<< HEAD
+=======
+              leading: const Icon(Icons.call, color: Colors.green),
+              title: Text("Звонки", style: TextStyle(color: textColor)),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (context) => CallHistoryScreen(userId: currentUserId ?? 0)));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person, color: Colors.blue),
+              title: Text("Контакты", style: TextStyle(color: textColor)),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const ContactsScreen()));
+              },
+            ),
+            ListTile(
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
               leading: const Icon(Icons.campaign, color: Colors.orange),
               title: Text("Создать канал", style: TextStyle(color: textColor)),
               onTap: () {
                 Navigator.pop(context);
+<<<<<<< HEAD
                 // Навигация на создание канала (создадим позже или используем существующий экран с флагом)
+=======
+                Navigator.push(context, MaterialPageRoute(builder: (context) => CreateGroupScreen(currentUserId: currentUserId!)));
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
               },
             ),
             ListTile(
@@ -363,6 +493,21 @@ class _ChatsScreenState extends State<ChatsScreen> {
       body: SafeArea(
         child: Column(
           children: [
+<<<<<<< HEAD
+=======
+            if (_isOffline)
+              Container(
+                width: double.infinity,
+                color: Colors.orangeAccent,
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: const Center(
+                  child: Text(
+                    "Подключение к серверу...",
+                    style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10),
               child: Row(
@@ -408,14 +553,29 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   Row(
                     children: [
                       IconButton(
+<<<<<<< HEAD
+=======
+                        icon: const Icon(Icons.search, color: Colors.blue, size: 28),
+                        onPressed: () {
+                          if (currentUserId == null) return;
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => SearchMessagesScreen(currentUserId: currentUserId!)));
+                        },
+                      ),
+                      IconButton(
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                         icon: const Icon(Icons.bookmark_border, color: Colors.blue, size: 28),
                         onPressed: () async {
                           if (currentUserId == null) return;
                           int? savedChatId = await _chatService.getOrCreateSavedMessages(currentUserId!);
+<<<<<<< HEAD
                           if (savedChatId != null && mounted) {
                             if (context.mounted) {
                               await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId, isSecret: false)));
                             }
+=======
+                          if (savedChatId != null && mounted && context.mounted) {
+                              await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: savedChatId, chatName: "Избранное", currentUserId: currentUserId!, otherUserId: currentUserId, isSecret: false, partnerAvatarUrl: myAvatarUrl)));
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                             _refreshChats();
                           }
                         },
@@ -436,10 +596,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 ],
               ),
             ),
+<<<<<<< HEAD
             // 🎞️ ПАНЕЛЬ СТОРИС (ПУЛЬС)
             const StoryBar(),
 
             // 🔍 СТРОКА ПОИСКА ЧАТОВ
+=======
+            const StoryBar(),
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Container(
@@ -475,7 +639,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
               ),
             ),
 
+<<<<<<< HEAD
             // 📁 ПАПКИ
+=======
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
             if (_folders.isNotEmpty)
             SizedBox(
               height: 40,
@@ -512,6 +679,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
               child: RefreshIndicator(
                 onRefresh: () => _refreshChats(showIndicator: false),
                 color: Colors.blue,
+<<<<<<< HEAD
                 child: _filteredChats.isEmpty
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
@@ -553,11 +721,71 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           String timeStr = formatChatDateTime(timeRaw?.toString());
 
                           return Slidable(
+=======
+              child: _filteredChats.isEmpty && _archivedCount == 0
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                        Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.chat_bubble_outline, size: 50, color: isDark ? Colors.white54 : Colors.grey),
+                              const SizedBox(height: 10),
+                              Text(_allChats.isEmpty ? 'No chats yet' : 'Not found', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  : ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        if (_archivedCount > 0 && _selectedFolderId == null && _searchController.text.isEmpty)
+                          _buildArchivedTile(isDark, textColor),
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _filteredChats.length,
+                          separatorBuilder: (context, index) => Divider(indent: compactMode ? 56 : 76, height: 1, color: dividerColor),
+                          itemBuilder: (context, index) {
+                            final chat = _filteredChats[index];
+                            final chatName = chat['chatName'] ?? chat['ChatName'] ?? 'Unknown';
+                            final lastMessage = chat['lastMessage'] ?? chat['LastMessage'] ?? '';
+                            final timeRaw = chat['lastMessageTime'] ?? chat['LastMessageTime'];
+                            final chatId = chat['chatID'] ?? chat['chatId'] ?? chat['ChatID'];
+                            final unreadCount = chat['unreadCount'] ?? chat['UnreadCount'] ?? 0;
+                            final chatAvatar = chat['avatarUrl'] ?? chat['AvatarUrl'];
+                            final otherUserId = chat['otherUserId'] ?? chat['OtherUserId'];
+                            final bool isOnline = chat['isOnline'] ?? chat['IsOnline'] ?? false;
+                            final bool isMeLast = (chat['lastMessageSenderId'] ?? chat['LastMessageSenderId']) == currentUserId;
+                            
+                            final bool isGroup = chat['isGroup'] == true || chat['IsGroup'] == true || chat['chatType'] == 1 || chat['ChatType'] == 1 || (otherUserId == null && chatName != 'Saved Messages' && chatName != 'Избранное');
+                            final bool isSavedMessages = (otherUserId == null && !isGroup);
+                            final String finalChatName = isSavedMessages ? "Избранное" : chatName;
+                            final bool isPinned = chat['isPinned'] ?? chat['IsPinned'] ?? false;
+                            final bool isChannel = chat['isChannel'] ?? chat['IsChannel'] ?? false;
+                            final bool isAdmin = chat['isAdmin'] ?? chat['IsAdmin'] ?? false;
+                            String timeStr = formatChatDateTime(timeRaw?.toString());
+
+                            return Slidable(
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                             key: Key('chat_$chatId'),
                             startActionPane: ActionPane(
                               motion: const ScrollMotion(),
                               children: [
                                 SlidableAction(
+<<<<<<< HEAD
+=======
+                                  onPressed: (context) => _showMuteOptions(chatId),
+                                  backgroundColor: Colors.orangeAccent,
+                                  foregroundColor: Colors.white,
+                                  icon: Icons.notifications_off,
+                                  label: 'Mute',
+                                ),
+                                SlidableAction(
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                                   onPressed: (context) async {
                                     HapticFeedback.lightImpact(); 
                                     await _chatService.togglePinChat(chatId, currentUserId!); 
@@ -575,7 +803,26 @@ class _ChatsScreenState extends State<ChatsScreen> {
                               children: [
                                 SlidableAction(
                                   onPressed: (context) async {
+<<<<<<< HEAD
                                     HapticFeedback.mediumImpact();
+=======
+                                    HapticFeedback.lightImpact();
+                                    await _chatService.archiveChat(chatId, true);
+                                    _refreshChats();
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Чат отправлен в архив 📥")));
+                                    }
+                                  },
+                                  backgroundColor: Colors.blueGrey,
+                                  foregroundColor: Colors.white,
+                                  icon: Icons.archive,
+                                  label: 'В архив',
+                                ),
+                                SlidableAction(
+                                  onPressed: (context) async {
+                                    HapticFeedback.mediumImpact();
+                                    if (!mounted || !context.mounted) return;
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                                     bool? confirm = await showDialog(
                                       context: context,
                                       builder: (BuildContext context) {
@@ -623,6 +870,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             child: Container(
                               color: isPinned ? (isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF4F9FF)) : Colors.transparent, 
                               child: ListTile(
+<<<<<<< HEAD
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                                 onTap: () async {
                                   if (widget.onChatSelected != null) {
@@ -631,12 +879,26 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                     await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: chatId, chatName: finalChatName, currentUserId: currentUserId!, otherUserId: otherUserId, isChannel: isChannel, isAdmin: isAdmin, isSecret: chat['isSecret'] ?? chat['IsSecret'] ?? false)));
                                     _refreshChats(); 
                                   }
+=======
+                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: compactMode ? 0 : 4),
+                                onTap: () async {
+                                    if (widget.onChatSelected != null) {
+                                      widget.onChatSelected!(chatId, finalChatName, otherUserId);
+                                    } else {
+                                      await Navigator.push(context, MaterialPageRoute(builder: (context) => ChatDetailScreen(chatId: chatId, chatName: finalChatName, currentUserId: currentUserId!, otherUserId: otherUserId, isChannel: isChannel, isAdmin: isAdmin, isSecret: chat['isSecret'] ?? chat['IsSecret'] ?? false, partnerAvatarUrl: chatAvatar)));
+                                      _refreshChats(); 
+                                    }
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                                 },
                                 leading: Stack(
                                   clipBehavior: Clip.none,
                                   children: [
                                     CircleAvatar(
+<<<<<<< HEAD
                                       radius: 28, 
+=======
+                                      radius: compactMode ? 24 : 28, 
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                                       backgroundColor: isSavedMessages ? Colors.blue : (isChannel ? Colors.purple : (isGroup ? Colors.orangeAccent : (isDark ? Colors.grey[800] : Colors.blueAccent))),
                                       backgroundImage: chatAvatar != null ? CachedNetworkImageProvider(chatAvatar) : null,
                                       child: isSavedMessages 
@@ -654,7 +916,21 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                 title: Text(chatName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 17, color: textColor), maxLines: 1, overflow: TextOverflow.ellipsis),
                                 subtitle: _typingChats.containsKey(chatId)
                                     ? const Text("печатает...", style: TextStyle(color: Colors.blue, fontSize: 15, fontStyle: FontStyle.italic))
+<<<<<<< HEAD
                                     : Text(lastMessage, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: unreadCount > 0 ? textColor : subTextColor, fontSize: 15, height: 1.2)),
+=======
+                                    : Row(
+                                        children: [
+                                          if (_drafts.containsKey(chatId)) ...[
+                                            const Text("Черновик: ", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13)),
+                                            Expanded(child: Text(_drafts[chatId]!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 13))),
+                                          ] else ...[
+                                            if (isMeLast) Text("Вы: ", style: TextStyle(color: textColor.withValues(alpha: 0.8), fontSize: 13, fontWeight: FontWeight.w500)),
+                                            Expanded(child: Text(lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 13))),
+                                          ],
+                                        ],
+                                      ),
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
                                 trailing: Column(
                                   mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
@@ -675,6 +951,55 @@ class _ChatsScreenState extends State<ChatsScreen> {
                           );
                         },
                       ),
+<<<<<<< HEAD
+=======
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+  Widget _buildArchivedTile(bool isDark, Color textColor) {
+    return InkWell(
+      onTap: () {
+        // Здесь можно открыть отдельный экран с архивом
+        // Для простоты пока просто покажем тост
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Экран архива будет добавлен в следующем обновлении или отфильтруйте 'Архив' в поиске")));
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: isDark ? Colors.blueGrey[900] : Colors.blueGrey[100],
+                  child: const Icon(Icons.archive, color: Colors.blueGrey),
+                ),
+                Positioned(
+                  right: 0, bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(color: Colors.blue, shape: BoxShape.circle, border: Border.all(color: isDark ? Colors.black : Colors.white, width: 2)),
+                    child: Text(_archivedCount.toString(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Архив", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: textColor)),
+                  const Text("Чаты с выключенными уведомлениями", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                ],
+>>>>>>> 413b0d10d3c7aa05c3474b141964b6ead42dbc75
               ),
             ),
           ],
